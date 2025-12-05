@@ -5,6 +5,7 @@ export interface Match {
   score1?: number;
   score2?: number;
   date: string;
+  group: string;
 }
 
 export interface GroupFixture {

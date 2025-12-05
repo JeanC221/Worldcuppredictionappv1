@@ -1,6 +1,10 @@
-import { mockPredictions, actualResults } from '../utils/mockData';
+import { useEffect, useState } from 'react';
+import { db, auth } from '../lib/firebase';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Match } from '../utils/types';
-import { CheckCircle2, XCircle, Calendar, Trophy, TrendingUp } from 'lucide-react';
+import { CheckCircle2, XCircle, Calendar, Trophy, TrendingUp, Loader2 } from 'lucide-react';
+import { PredictionForm } from './PredictionForm'; // <--- IMPORTANTE: Importamos el formulario
 import {
   Accordion,
   AccordionContent,
@@ -54,7 +58,8 @@ function MatchComparison({ predicted, actual }: MatchComparisonProps) {
       {/* Date */}
       <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
         <Calendar className="size-3" />
-        {predicted.date}
+        {/* Formateo seguro de fecha */}
+        {new Date(predicted.date).toLocaleDateString('es-ES', {  month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' })}
       </div>
 
       {/* Actual Result (if available) */}
@@ -145,58 +150,102 @@ function MatchComparison({ predicted, actual }: MatchComparisonProps) {
 }
 
 export function MyPrediction() {
-  const userPrediction = mockPredictions[0];
+  const [loading, setLoading] = useState(true);
+  const [userPrediction, setUserPrediction] = useState<any>(null);
+  const [actualMatchesMap, setActualMatchesMap] = useState<{ [key: string]: Match }>({});
 
-  if (!userPrediction) {
-    return (
-      <div className="text-center py-12 bg-white border border-gray-200 rounded-xl">
-        <Trophy className="size-16 text-gray-300 mx-auto mb-4" />
-        <h2 className="text-gray-900 mb-2">No hay predicción registrada</h2>
-        <p className="text-gray-600">
-          Dirígete a la sección de Predicción para crear tu polla
-        </p>
-      </div>
-    );
+  useEffect(() => {
+    const fetchData = async (uid: string) => {
+      try {
+        // 1. Obtener la predicción del usuario
+        const docRef = doc(db, 'polla_completa', uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          setUserPrediction(docSnap.data());
+        }
+
+        // 2. Obtener los resultados reales de TODOS los partidos
+        const querySnapshot = await getDocs(collection(db, 'partidos'));
+        const matchesMap: { [key: string]: Match } = {};
+        querySnapshot.forEach((doc) => {
+          matchesMap[doc.id] = { id: doc.id, ...doc.data() } as Match;
+        });
+        setActualMatchesMap(matchesMap);
+
+      } catch (error) {
+        console.error("Error al cargar datos:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        fetchData(user.uid);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  if (loading) {
+     return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin size-10 text-orange-500" /></div>;
   }
 
-  const groups = Object.keys(userPrediction.groupPredictions);
+  // --- SOLUCIÓN DEL BUCLE ---
+  // Si no hay predicción guardada, mostramos el formulario directamente
+  // en lugar de mandar al usuario a otro lado.
+  if (!userPrediction) {
+    return <PredictionForm />;
+  }
 
-  // Calculate stats
+  // Si YA hay predicción, mostramos los resultados y puntos
+  const groups = Object.keys(userPrediction.groupPredictions || {}).sort();
+
+  // Calcular estadísticas en tiempo real
   let totalExact = 0;
   let totalCorrectWinner = 0;
   let totalIncorrect = 0;
 
   groups.forEach((groupId) => {
     const predictions = userPrediction.groupPredictions[groupId];
-    const actualMatches = actualResults.groupResults[groupId];
+    
+    predictions.forEach((p: Match) => {
+      const actual = actualMatchesMap[p.id];
+      // Solo contamos si el partido ya tiene resultado
+      if (actual && actual.score1 !== undefined && actual.score2 !== undefined && actual.score1 !== null) {
+        if (p.score1 === actual.score1 && p.score2 === actual.score2) {
+          totalExact++;
+        } else {
+          // Lógica de ganador
+          const predDiff = (p.score1 || 0) - (p.score2 || 0);
+          const actualDiff = (actual.score1 || 0) - (actual.score2 || 0);
+          
+          // Si ambos son positivos (gana 1), ambos negativos (gana 2) o ambos cero (empate)
+          const sameSign = (predDiff > 0 && actualDiff > 0) || 
+                           (predDiff < 0 && actualDiff < 0) || 
+                           (predDiff === 0 && actualDiff === 0);
 
-    if (actualMatches) {
-      predictions.forEach((p) => {
-        const actual = actualMatches.find((a) => a.id === p.id);
-        if (actual && actual.score1 !== undefined) {
-          if (p.score1 === actual.score1 && p.score2 === actual.score2) {
-            totalExact++;
+          if (sameSign) {
+            totalCorrectWinner++;
           } else {
-            const predResult = p.score1! > p.score2! ? 'win1' : p.score1! < p.score2! ? 'win2' : 'draw';
-            const actualResult = actual.score1 > actual.score2 ? 'win1' : actual.score1 < actual.score2 ? 'win2' : 'draw';
-            if (predResult === actualResult) {
-              totalCorrectWinner++;
-            } else {
-              totalIncorrect++;
-            }
+            totalIncorrect++;
           }
         }
-      });
-    }
+      }
+    });
   });
 
   const totalPoints = totalExact * 5 + totalCorrectWinner * 3;
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto pb-10">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-gray-900 mb-2">Mi Predicción</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Mi Predicción</h1>
         <p className="text-gray-600">
           Revisa tus predicciones y compáralas con los resultados reales
         </p>
@@ -206,22 +255,22 @@ export function MyPrediction() {
       <div className="grid md:grid-cols-4 gap-4 mb-6">
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white shadow-lg">
           <TrendingUp className="size-6 mb-3" />
-          <div className="text-3xl mb-1">{totalPoints}</div>
+          <div className="text-3xl mb-1 font-bold">{totalPoints}</div>
           <div className="text-sm opacity-90">Puntos Totales</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
           <CheckCircle2 className="size-6 text-emerald-500 mb-3" />
-          <div className="text-3xl text-gray-900 mb-1">{totalExact}</div>
+          <div className="text-3xl text-gray-900 mb-1 font-bold">{totalExact}</div>
           <div className="text-sm text-gray-600">Marcadores Exactos</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
           <CheckCircle2 className="size-6 text-blue-500 mb-3" />
-          <div className="text-3xl text-gray-900 mb-1">{totalCorrectWinner}</div>
+          <div className="text-3xl text-gray-900 mb-1 font-bold">{totalCorrectWinner}</div>
           <div className="text-sm text-gray-600">Ganadores Correctos</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
           <XCircle className="size-6 text-red-500 mb-3" />
-          <div className="text-3xl text-gray-900 mb-1">{totalIncorrect}</div>
+          <div className="text-3xl text-gray-900 mb-1 font-bold">{totalIncorrect}</div>
           <div className="text-sm text-gray-600">Incorrectos</div>
         </div>
       </div>
@@ -231,7 +280,7 @@ export function MyPrediction() {
         <Trophy className="size-4 text-orange-600" />
         <AlertDescription className="text-orange-900">
           Predicción bloqueada de <span className="font-semibold">{userPrediction.userName}</span> -{' '}
-          Enviada: {userPrediction.submittedAt}
+          Enviada: {new Date(userPrediction.submittedAt).toLocaleDateString()}
         </AlertDescription>
       </Alert>
 
@@ -239,30 +288,28 @@ export function MyPrediction() {
       <Accordion type="multiple" defaultValue={groups} className="space-y-3">
         {groups.map((groupId) => {
           const predictions = userPrediction.groupPredictions[groupId];
-          const actualMatches = actualResults.groupResults[groupId];
-
+          
+          // Contadores locales por grupo
           let exactCount = 0;
           let correctWinnerCount = 0;
           let incorrectCount = 0;
 
-          if (actualMatches) {
-            predictions.forEach((p) => {
-              const actual = actualMatches.find((a) => a.id === p.id);
-              if (actual && actual.score1 !== undefined) {
+          predictions.forEach((p: Match) => {
+             const actual = actualMatchesMap[p.id];
+             if (actual && actual.score1 !== undefined && actual.score1 !== null) {
                 if (p.score1 === actual.score1 && p.score2 === actual.score2) {
-                  exactCount++;
+                   exactCount++;
                 } else {
-                  const predResult = p.score1! > p.score2! ? 'win1' : p.score1! < p.score2! ? 'win2' : 'draw';
-                  const actualResult = actual.score1 > actual.score2 ? 'win1' : actual.score1 < actual.score2 ? 'win2' : 'draw';
-                  if (predResult === actualResult) {
-                    correctWinnerCount++;
-                  } else {
-                    incorrectCount++;
-                  }
+                   const pDiff = (p.score1||0) - (p.score2||0);
+                   const aDiff = (actual.score1||0) - (actual.score2||0);
+                   if ((pDiff>0 && aDiff>0) || (pDiff<0 && aDiff<0) || (pDiff===0 && aDiff===0)) {
+                      correctWinnerCount++;
+                   } else {
+                      incorrectCount++;
+                   }
                 }
-              }
-            });
-          }
+             }
+          });
 
           return (
             <AccordionItem
@@ -281,8 +328,9 @@ export function MyPrediction() {
                       <span className="text-xs text-gray-500">{predictions.length} partidos</span>
                     </div>
                   </div>
-                  {actualMatches && (
-                    <div className="flex items-center gap-3 text-sm">
+                  
+                  {/* Badge resumen de aciertos en el header del acordeon */}
+                  <div className="flex items-center gap-3 text-sm">
                       {exactCount > 0 && (
                         <div className="flex items-center gap-1 text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
                           <CheckCircle2 className="size-4" />
@@ -301,14 +349,13 @@ export function MyPrediction() {
                           <span>{incorrectCount}</span>
                         </div>
                       )}
-                    </div>
-                  )}
+                  </div>
                 </div>
               </AccordionTrigger>
               <AccordionContent className="pt-4 pb-6">
                 <div className="space-y-4">
-                  {predictions.map((predicted) => {
-                    const actual = actualMatches?.find((a) => a.id === predicted.id);
+                  {predictions.map((predicted: Match) => {
+                    const actual = actualMatchesMap[predicted.id];
                     return (
                       <MatchComparison
                         key={predicted.id}

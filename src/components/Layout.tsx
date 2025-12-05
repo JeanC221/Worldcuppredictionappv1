@@ -1,11 +1,13 @@
-import { Link, useLocation } from 'react-router';
-import { Trophy, ClipboardList, BarChart3, Users, Home, BookOpen, Menu } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Trophy, ClipboardList, BarChart3, Users, Home, BookOpen, Menu, Shield } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from './ui/button';
+import { useAdmin } from '../hooks/useAdmin';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { isAdmin } = useAdmin();
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: Home },
@@ -18,11 +20,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top Navigation Bar */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
             <Link to="/dashboard" className="flex items-center gap-3">
               <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
                 <Trophy className="size-6 text-white" />
@@ -33,7 +33,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </Link>
 
-            {/* Desktop Navigation */}
             <nav className="hidden lg:flex items-center gap-2">
               {navItems.map((item) => {
                 const Icon = item.icon;
@@ -53,9 +52,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </Link>
                 );
               })}
+              
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                    location.pathname === '/admin'
+                      ? 'bg-red-50 text-red-600 border border-red-200'
+                      : 'text-red-600 hover:text-red-700 hover:bg-red-50'
+                  }`}
+                >
+                  <Shield className="size-4" />
+                  <span className="text-sm">Admin</span>
+                </Link>
+              )}
             </nav>
 
-            {/* Mobile Menu Button */}
             <Button
               variant="outline"
               size="sm"
@@ -66,7 +78,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
 
-          {/* Mobile Navigation */}
           {isMobileMenuOpen && (
             <div className="lg:hidden py-4 border-t border-gray-200">
               <nav className="flex flex-col gap-2">
@@ -89,16 +100,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </Link>
                   );
                 })}
+                
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                      location.pathname === '/admin'
+                        ? 'bg-red-50 text-red-600 border border-red-200'
+                        : 'text-red-600 hover:bg-red-50'
+                    }`}
+                  >
+                    <Shield className="size-5" />
+                    <span>Panel Admin</span>
+                  </Link>
+                )}
               </nav>
             </div>
           )}
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-8">{children}</main>
 
-      {/* Footer */}
       <footer className="bg-white border-t border-gray-200 mt-16">
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">

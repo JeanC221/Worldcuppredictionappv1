@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Login } from '../components/Login';
 import { Dashboard } from '../components/Dashboard';
@@ -7,6 +7,7 @@ import { MyPrediction } from '../components/MyPrediction';
 import { Ranking } from '../components/Ranking';
 import { Community } from '../components/Community';
 import { Instructions } from '../components/Instructions';
+import { AdminPanel } from '../components/AdminPanel';
 
 export const router = createBrowserRouter([
   {
@@ -58,6 +59,14 @@ export const router = createBrowserRouter([
     element: (
       <Layout>
         <Instructions />
+      </Layout>
+    ),
+  },
+  {
+    path: '/admin',
+    element: (
+      <Layout>
+        <AdminPanel />
       </Layout>
     ),
   },

@@ -1,343 +1,196 @@
-import { useState } from 'react';
-import { groupFixtures, GROUPS } from '../utils/mockData';
+import { useState, useEffect } from 'react';
+import { db, auth } from '../lib/firebase';
+import { collection, query, orderBy, getDocs, doc, setDoc } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
 import { Match } from '../utils/types';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from './ui/accordion';
+import { calculateGroupStandings, generateRoundOf32, KnockoutPairing } from '../utils/bracketLogic';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { AlertCircle, Lock, Trophy, CheckCircle, Calendar } from 'lucide-react';
+import { AlertCircle, Trophy, CheckCircle, Loader2, Save } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 export function PredictionForm() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  
+  // Datos
   const [predictions, setPredictions] = useState<{ [key: string]: Match[] }>({});
+  const [groupsList, setGroupsList] = useState<string[]>([]);
+  const [knockoutPicks, setKnockoutPicks] = useState<{ [matchId: string]: string }>({});
+  const [bracket, setBracket] = useState<KnockoutPairing[]>([]);
+
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
+  const [activeTab, setActiveTab] = useState("groups");
 
-  const updateScore = (groupId: string, matchId: string, team: 'team1' | 'team2', value: string) => {
-    const score = value === '' ? undefined : parseInt(value);
-    if (score !== undefined && (isNaN(score) || score < 0)) return;
+  // 1. Cargar datos
+  useEffect(() => {
+    const fetchMatches = async () => {
+      try {
+        const q = query(collection(db, 'partidos'), orderBy('group'), orderBy('date'));
+        const snap = await getDocs(q);
+        const grouped: { [key: string]: Match[] } = {};
+        const groupsFound = new Set<string>();
+        
+        snap.forEach((doc) => {
+          const d = doc.data();
+          const m: Match = { 
+            id: doc.id, team1: d.team1, team2: d.team2, date: d.date, group: d.group,
+            score1: undefined, score2: undefined // Limpios para predecir
+          };
+          if (!grouped[m.group]) grouped[m.group] = [];
+          grouped[m.group].push(m);
+          groupsFound.add(m.group);
+        });
+        setPredictions(grouped);
+        setGroupsList(Array.from(groupsFound).sort());
+      } catch (e) { console.error(e); } finally { setLoading(false); }
+    };
+    fetchMatches();
+  }, []);
 
-    setPredictions((prev) => {
-      const groupPredictions = prev[groupId] || groupFixtures.find((g) => g.group === groupId)!.matches;
-      const updatedMatches = groupPredictions.map((match) =>
-        match.id === matchId
-          ? {
-              ...match,
-              [team === 'team1' ? 'score1' : 'score2']: score,
-            }
-          : match
-      );
-      return { ...prev, [groupId]: updatedMatches };
-    });
-  };
-
-  const getWinner = (match: Match): string => {
-    if (match.score1 === undefined || match.score2 === undefined) return '-';
-    if (match.score1 > match.score2) return match.team1;
-    if (match.score2 > match.score1) return match.team2;
-    return 'Empate';
-  };
-
-  const getGroupWinners = (groupId: string): string[] => {
-    const groupPredictions = predictions[groupId] || [];
-    const teams = new Set<string>();
-    
-    groupPredictions.forEach((match) => {
-      teams.add(match.team1);
-      teams.add(match.team2);
-    });
-
-    const teamPoints: { [team: string]: number } = {};
-    teams.forEach((team) => {
-      teamPoints[team] = 0;
+  // 2. Calcular Bracket Dinámico
+  useEffect(() => {
+    const allStandings: any = {};
+    groupsList.forEach(g => {
+      allStandings[g] = calculateGroupStandings(predictions[g] || [], g);
     });
 
-    groupPredictions.forEach((match) => {
-      if (match.score1 !== undefined && match.score2 !== undefined) {
-        if (match.score1 > match.score2) {
-          teamPoints[match.team1] = (teamPoints[match.team1] || 0) + 3;
-        } else if (match.score2 > match.score1) {
-          teamPoints[match.team2] = (teamPoints[match.team2] || 0) + 3;
-        } else {
-          teamPoints[match.team1] = (teamPoints[match.team1] || 0) + 1;
-          teamPoints[match.team2] = (teamPoints[match.team2] || 0) + 1;
-        }
+    const fullBracket = [...generateRoundOf32(allStandings)];
+    const getWinner = (id: string) => knockoutPicks[id];
+
+    // Función para construir rondas siguientes
+    const buildRound = (name: string, count: number, prev: string) => {
+      for (let i = 1; i <= count; i++) {
+        const f1 = `${prev}-${(i * 2) - 1}`;
+        const f2 = `${prev}-${(i * 2)}`;
+        fullBracket.push({
+          id: `${name}-${i}`, round: name as any,
+          team1: getWinner(f1) || 'Ganador ' + f1,
+          team2: getWinner(f2) || 'Ganador ' + f2
+        });
       }
-    });
+    };
+    buildRound('R16', 8, 'R32');
+    buildRound('QF', 4, 'R16');
+    buildRound('SF', 2, 'QF');
+    buildRound('F', 1, 'SF');
+    setBracket(fullBracket);
+  }, [predictions, knockoutPicks, groupsList]);
 
-    return Object.entries(teamPoints)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 2)
-      .map(([team]) => team);
+  const updateScore = (g: string, id: string, t: 'team1'|'team2', v: string) => {
+    const s = v === '' ? undefined : parseInt(v);
+    if (s !== undefined && (isNaN(s) || s < 0)) return;
+    setPredictions(p => ({
+      ...p, [g]: p[g].map(m => m.id === id ? { ...m, [t === 'team1'?'score1':'score2']: s } : m)
+    }));
   };
 
-  const handleSubmit = () => {
-    setIsLocked(true);
-    setShowConfirmDialog(false);
+  const pickWinner = (id: string, team: string) => {
+    if (!team || team.includes('Ganador') || team.includes('TBD')) return;
+    setKnockoutPicks(prev => ({ ...prev, [id]: team }));
   };
 
-  const allGroupsCompleted = GROUPS.every((group) => {
-    const groupPreds = predictions[group] || [];
-    return groupPreds.every((match) => match.score1 !== undefined && match.score2 !== undefined);
-  });
+  const handleSubmit = async () => {
+    if (!auth.currentUser || !knockoutPicks['F-1']) { alert("Elige un campeón."); return; }
+    try {
+      await setDoc(doc(db, 'polla_completa', auth.currentUser.uid), {
+        userId: auth.currentUser.uid,
+        userName: auth.currentUser.displayName,
+        groupPredictions: predictions,
+        knockoutPicks,
+        isLocked: true,
+        submittedAt: new Date().toISOString(),
+        totalPoints: 0
+      });
+      navigate('/mi-polla');
+    } catch (e) { alert("Error al guardar."); }
+  };
 
-  const completedGroups = GROUPS.filter((group) => {
-    const groupPreds = predictions[group] || [];
-    return groupPreds.every((match) => match.score1 !== undefined && match.score2 !== undefined);
-  }).length;
+  // UI Helpers
+  const groupsCompleted = groupsList.length > 0 && groupsList.every(g => (predictions[g]||[]).every(m => m.score1 !== undefined && m.score2 !== undefined));
+  
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-orange-500"/></div>;
 
   return (
-    <div>
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-gray-900 mb-2">Formulario de Predicción</h1>
-        <p className="text-gray-600">
-          Completa los marcadores para todos los partidos de la fase de grupos. Una vez enviada, tu predicción será inmutable.
-        </p>
-      </div>
+    <div className="max-w-5xl mx-auto pb-20">
+      <h1 className="text-2xl font-bold mb-6">Tu Predicción</h1>
+      
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-6 bg-slate-100">
+          <TabsTrigger value="groups">Fase de Grupos</TabsTrigger>
+          <TabsTrigger value="knockout" disabled={!groupsCompleted}>Fase Final {groupsCompleted ? '🏆' : '🔒'}</TabsTrigger>
+        </TabsList>
 
-      {/* Progress Bar */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6 mb-6 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm text-gray-900">Progreso de Predicción</span>
-          <span className="text-sm text-orange-600">{completedGroups} / {GROUPS.length} grupos</span>
-        </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div 
-            className="bg-orange-500 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(completedGroups / GROUPS.length) * 100}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="grid lg:grid-cols-[1fr_360px] gap-6">
-        {/* Left Side - Groups */}
-        <div>
-          {isLocked && (
-            <Alert className="mb-6 border-red-300 bg-red-50">
-              <Lock className="size-4 text-red-600" />
-              <AlertDescription className="text-red-700">
-                Tu predicción ha sido bloqueada y enviada exitosamente. No se pueden realizar cambios.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <Accordion type="multiple" className="space-y-3">
-            {groupFixtures.map((fixture) => {
-              const groupPredictions = predictions[fixture.group] || fixture.matches;
-              const winners = getGroupWinners(fixture.group);
-              const isComplete = groupPredictions.every(
-                (m) => m.score1 !== undefined && m.score2 !== undefined
-              );
-
-              return (
-                <AccordionItem
-                  key={fixture.group}
-                  value={fixture.group}
-                  className="border border-gray-200 rounded-xl bg-white px-4 shadow-sm"
-                >
-                  <AccordionTrigger className="hover:no-underline py-4">
-                    <div className="flex items-center justify-between w-full pr-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center shadow-sm">
-                          <span className="text-white text-lg">{fixture.group}</span>
+        <TabsContent value="groups" className="grid lg:grid-cols-[1fr_300px] gap-6">
+          <div className="space-y-4">
+            {!groupsCompleted && <Alert className="bg-orange-50 text-orange-800"><AlertCircle className="w-4 h-4"/> <AlertDescription>Llena todos los grupos para desbloquear la Fase Final.</AlertDescription></Alert>}
+            <Accordion type="multiple" defaultValue={['A']}>
+              {groupsList.map(g => (
+                <AccordionItem key={g} value={g} className="bg-white border rounded-xl px-4">
+                  <AccordionTrigger className="hover:no-underline"><span className="font-bold">Grupo {g}</span></AccordionTrigger>
+                  <AccordionContent>
+                    {predictions[g]?.map(m => (
+                      <div key={m.id} className="flex justify-between items-center py-2">
+                        <span className="w-1/3 text-right text-sm">{m.team1}</span>
+                        <div className="flex gap-2 mx-2">
+                          <Input type="number" className="w-10 h-8 text-center" min="0" value={m.score1??''} onChange={e=>updateScore(g,m.id,'team1',e.target.value)}/>
+                          <Input type="number" className="w-10 h-8 text-center" min="0" value={m.score2??''} onChange={e=>updateScore(g,m.id,'team2',e.target.value)}/>
                         </div>
-                        <div className="text-left">
-                          <span className="text-gray-900 block">Grupo {fixture.group}</span>
-                          <span className="text-xs text-gray-500">3 partidos</span>
-                        </div>
+                        <span className="w-1/3 text-left text-sm">{m.team2}</span>
                       </div>
-                      {isComplete ? (
-                        <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-lg">
-                          <CheckCircle className="size-4 text-emerald-600" />
-                          <span className="text-xs text-emerald-700">Completado</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-lg">
-                          <span className="text-xs text-gray-600">Pendiente</span>
-                        </div>
-                      )}
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-4 pb-6">
-                    <div className="space-y-3">
-                      {groupPredictions.map((match) => (
-                        <div
-                          key={match.id}
-                          className="bg-gray-50 border border-gray-200 rounded-lg p-4"
-                        >
-                          <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
-                            <Calendar className="size-3" />
-                            {match.date}
-                          </div>
-                          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-                            {/* Team 1 */}
-                            <div className="text-right">
-                              <div className="text-gray-900 mb-2">{match.team1}</div>
-                              <Input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                value={match.score1 ?? ''}
-                                onChange={(e) =>
-                                  updateScore(fixture.group, match.id, 'team1', e.target.value)
-                                }
-                                disabled={isLocked}
-                                className="w-20 text-center bg-white border-gray-300 text-gray-900 text-lg ml-auto focus:border-orange-500 focus:ring-orange-500"
-                              />
-                            </div>
-
-                            {/* VS */}
-                            <div className="text-gray-400 text-sm">vs</div>
-
-                            {/* Team 2 */}
-                            <div className="text-left">
-                              <div className="text-gray-900 mb-2">{match.team2}</div>
-                              <Input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                value={match.score2 ?? ''}
-                                onChange={(e) =>
-                                  updateScore(fixture.group, match.id, 'team2', e.target.value)
-                                }
-                                disabled={isLocked}
-                                className="w-20 text-center bg-white border-gray-300 text-gray-900 text-lg focus:border-orange-500 focus:ring-orange-500"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Winner Display */}
-                          {match.score1 !== undefined && match.score2 !== undefined && (
-                            <div className="mt-3 pt-3 border-t border-gray-200">
-                              <div className="text-xs text-gray-500">Resultado:</div>
-                              <div className="text-orange-600 mt-1">{getWinner(match)}</div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    ))}
                   </AccordionContent>
                 </AccordionItem>
-              );
-            })}
-          </Accordion>
-
-          {/* Submit Button */}
-          <div className="mt-6">
-            <Button
-              onClick={() => setShowConfirmDialog(true)}
-              disabled={!allGroupsCompleted || isLocked}
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white py-6 shadow-lg disabled:opacity-50"
-              size="lg"
-            >
-              <Lock className="size-5 mr-2" />
-              Enviar y Bloquear Predicción
-            </Button>
-
-            {!allGroupsCompleted && !isLocked && (
-              <Alert className="mt-4 border-amber-300 bg-amber-50">
-                <AlertCircle className="size-4 text-amber-600" />
-                <AlertDescription className="text-amber-700 text-sm">
-                  Completa todos los grupos ({completedGroups}/{GROUPS.length}) antes de enviar tu predicción
-                </AlertDescription>
-              </Alert>
-            )}
+              ))}
+            </Accordion>
           </div>
-        </div>
+          <div className="hidden lg:block">
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Progreso</CardTitle></CardHeader>
+              <CardContent className="text-center">
+                <div className="text-2xl font-bold text-orange-600 mb-2">
+                   {groupsList.filter(g => (predictions[g]||[]).every(m => m.score1 !== undefined && m.score2 !== undefined)).length} / 12
+                </div>
+                <div className="text-xs text-gray-500">Grupos Completados</div>
+                {groupsCompleted && <Button className="w-full mt-4 bg-green-600" onClick={()=>setActiveTab('knockout')}>Ir a Fase Final <CheckCircle className="ml-2 w-4 h-4"/></Button>}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
 
-        {/* Right Side - Round of 32 Bracket Preview */}
-        <div className="lg:sticky lg:top-24 h-fit">
-          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-            <h3 className="text-gray-900 mb-2 flex items-center gap-2">
-              <Trophy className="size-5 text-orange-500" />
-              Clasificados a Dieciseisavos
-            </h3>
-            <p className="text-sm text-gray-600 mb-6">
-              Los equipos aparecerán automáticamente según tus predicciones
-            </p>
-
-            <div className="space-y-3 max-h-[600px] overflow-y-auto">
-              {GROUPS.map((group) => {
-                const winners = getGroupWinners(group);
-                const isGroupComplete = winners.length > 0;
-                return (
-                  <div
-                    key={group}
-                    className={`border rounded-lg p-4 transition-colors ${
-                      isGroupComplete
-                        ? 'bg-emerald-50 border-emerald-200'
-                        : 'bg-gray-50 border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-6 h-6 bg-orange-500 rounded flex items-center justify-center text-white text-xs">
-                        {group}
-                      </div>
-                      <span className="text-xs text-gray-600">Grupo {group}</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {winners.length > 0 ? (
-                        winners.map((winner, idx) => (
-                          <div
-                            key={idx}
-                            className="text-sm text-gray-900 bg-white rounded px-3 py-2 border border-gray-200"
-                          >
-                            {idx + 1}° {winner}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-sm text-gray-400 italic">
-                          Completa el grupo...
-                        </div>
-                      )}
-                    </div>
+        <TabsContent value="knockout" className="space-y-8">
+          <Alert className="bg-blue-50 text-blue-900"><Trophy className="w-4 h-4"/><AlertDescription>Haz clic en el equipo ganador de cada llave para avanzar.</AlertDescription></Alert>
+          {['R32','R16','QF','SF','F'].map(r => (
+            <div key={r}>
+              <h3 className="font-bold border-b mb-4 pb-2 text-lg">{{'R32':'Dieciseisavos','R16':'Octavos','QF':'Cuartos','SF':'Semifinal','F':'Final'}[r]}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {bracket.filter(m => m.round === r).map(m => (
+                  <div key={m.id} className={`bg-white border-2 rounded p-3 ${knockoutPicks[m.id] ? 'border-orange-200' : 'border-slate-100'}`}>
+                    {[m.team1, m.team2].map(t => (
+                      <button key={t} onClick={()=>pickWinner(m.id,t)} className={`w-full text-left p-2 rounded text-sm mb-1 flex justify-between ${knockoutPicks[m.id]===t ? 'bg-orange-500 text-white' : 'bg-slate-50 hover:bg-slate-100'}`}>
+                        <span className="truncate">{t}</span>{knockoutPicks[m.id]===t && <CheckCircle className="w-3 h-3"/>}
+                      </button>
+                    ))}
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
+          ))}
+          <div className="flex justify-center pt-4">
+             <Button size="lg" className="bg-gradient-to-r from-orange-500 to-red-600 text-white" onClick={()=>setShowConfirmDialog(true)}><Save className="mr-2"/> Confirmar Predicción</Button>
           </div>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
 
-      {/* Confirmation Dialog */}
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <DialogContent className="bg-white border-gray-200 text-gray-900">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-gray-900">
-              <AlertCircle className="size-5 text-orange-500" />
-              Confirmar Envío de Predicción
-            </DialogTitle>
-            <DialogDescription className="text-gray-600">
-              Esta acción es irreversible. Una vez enviada, tu predicción quedará bloqueada permanentemente.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 my-4">
-            <p className="text-sm text-orange-900">
-              ⚠️ ¿Estás seguro de que deseas enviar tu predicción? Asegúrate de haber revisado todos los marcadores cuidadosamente.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowConfirmDialog(false)}
-              className="border-gray-300 text-gray-900 hover:bg-gray-100"
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
-            >
-              <Lock className="size-4 mr-2" />
-              Confirmar y Bloquear
-            </Button>
-          </DialogFooter>
+        <DialogContent>
+          <DialogHeader><DialogTitle>¿Enviar Definitiva?</DialogTitle><DialogDescription>No podrás hacer cambios después.</DialogDescription></DialogHeader>
+          <div className="bg-slate-50 p-4 rounded text-center"><strong>Tu Campeón:</strong> {knockoutPicks['F-1'] || "Sin seleccionar"}</div>
+          <DialogFooter><Button variant="outline" onClick={()=>setShowConfirmDialog(false)}>Cancelar</Button><Button onClick={handleSubmit} className="bg-orange-600 text-white">Enviar</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
