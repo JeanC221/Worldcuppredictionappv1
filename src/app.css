@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+/* Definir colores personalizados para Tailwind v4 */
+@theme {
+  /* Colores de marca basados en el logo */
+  --color-primary: #1E3A5F;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #F1F5F9;
+  --color-secondary-foreground: #1E3A5F;
+  --color-accent: #E85D24;
+  --color-accent-foreground: #FFFFFF;
+  --color-muted: #F8FAFC;
+  --color-muted-foreground: #64748B;
+  --color-destructive: #DC2626;
+  --color-destructive-foreground: #FFFFFF;
+  
+  /* Colores de UI */
+  --color-background: #F8FAFC;
+  --color-foreground: #1F2937;
+  --color-card: #FFFFFF;
+  --color-card-foreground: #1F2937;
+  --color-popover: #FFFFFF;
+  --color-popover-foreground: #1F2937;
+  --color-border: #E2E8F0;
+  --color-input: #E2E8F0;
+  --color-ring: #1E3A5F;
+  
+  /* Colores de marca adicionales */
+  --color-brand-navy: #1E3A5F;
+  --color-brand-navy-light: #2D4A6F;
+  --color-brand-navy-dark: #152A45;
+  --color-brand-orange: #E85D24;
+  --color-brand-orange-light: #F47340;
+  --color-brand-orange-dark: #C44D1A;
+  --color-brand-gold: #D4A824;
+  
+  /* Éxito */
+  --color-success: #10B981;
+  --color-success-foreground: #FFFFFF;
+  
+  /* Sidebar */
+  --color-sidebar: #FFFFFF;
+  --color-sidebar-foreground: #1F2937;
+  --color-sidebar-primary: #1E3A5F;
+  --color-sidebar-primary-foreground: #FFFFFF;
+  --color-sidebar-accent: #F1F5F9;
+  --color-sidebar-accent-foreground: #1E3A5F;
+  --color-sidebar-border: #E2E8F0;
+  --color-sidebar-ring: #1E3A5F;
+  
+  /* Charts */
+  --color-chart-1: #1E3A5F;
+  --color-chart-2: #10B981;
+  --color-chart-3: #E85D24;
+  --color-chart-4: #D4A824;
+  --color-chart-5: #8B5CF6;
+  
+  /* Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* Variables CSS para componentes ShadcnUI */
+:root {
+  --background: #F8FAFC;
+  --foreground: #1F2937;
+  --card: #FFFFFF;
+  --card-foreground: #1F2937;
+  --popover: #FFFFFF;
+  --popover-foreground: #1F2937;
+  --primary: #1E3A5F;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #1E3A5F;
+  --muted: #F8FAFC;
+  --muted-foreground: #64748B;
+  --accent: #E85D24;
+  --accent-foreground: #FFFFFF;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --border: #E2E8F0;
+  --input: #E2E8F0;
+  --ring: #1E3A5F;
+  --radius: 0.75rem;
+  --success: #10B981;
+  --success-foreground: #FFFFFF;
+  
+  /* Colores de marca */
+  --brand-navy: #1E3A5F;
+  --brand-orange: #E85D24;
+  --brand-gold: #D4A824;
+  --brand-navy-light: #2D4A6F;
+  --brand-navy-dark: #152A45;
+}
+
+.dark {
+  --background: #0F172A;
+  --foreground: #F8FAFC;
+  --card: #1E293B;
+  --card-foreground: #F8FAFC;
+  --popover: #1E293B;
+  --popover-foreground: #F8FAFC;
+  --primary: #F97316;
+  --primary-foreground: #FFFFFF;
+  --secondary: #334155;
+  --secondary-foreground: #F8FAFC;
+  --muted: #1E293B;
+  --muted-foreground: #94A3B8;
+  --accent: #F97316;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #334155;
+  --input: #334155;
+  --ring: #F97316;
+}
+
+/* Estilos base */
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

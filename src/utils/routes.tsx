@@ -9,6 +9,7 @@ import { Community } from '../components/Community';
 import { Instructions } from '../components/Instructions';
 import { AdminPanel } from '../components/AdminPanel';
 import { Profile } from '../components/Profile';
+import { ProtectedRoute } from '../components/ProtectedRoute';
 
 export const router = createBrowserRouter([
   {
@@ -18,65 +19,81 @@ export const router = createBrowserRouter([
   {
     path: '/dashboard',
     element: (
-      <Layout>
-        <Dashboard />
-      </Layout>
+      <ProtectedRoute>
+        <Layout>
+          <Dashboard />
+        </Layout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/prediccion',
     element: (
-      <Layout>
-        <PredictionForm />
-      </Layout>
+      <ProtectedRoute>
+        <Layout>
+          <PredictionForm />
+        </Layout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/mi-polla',
     element: (
-      <Layout>
-        <MyPrediction />
-      </Layout>
+      <ProtectedRoute>
+        <Layout>
+          <MyPrediction />
+        </Layout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/ranking',
     element: (
-      <Layout>
-        <Ranking />
-      </Layout>
+      <ProtectedRoute>
+        <Layout>
+          <Ranking />
+        </Layout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/comunidad',
     element: (
-      <Layout>
-        <Community />
-      </Layout>
+      <ProtectedRoute>
+        <Layout>
+          <Community />
+        </Layout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/instrucciones',
     element: (
-      <Layout>
-        <Instructions />
-      </Layout>
+      <ProtectedRoute>
+        <Layout>
+          <Instructions />
+        </Layout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/admin',
     element: (
-      <Layout>
-        <AdminPanel />
-      </Layout>
+      <ProtectedRoute>
+        <Layout>
+          <AdminPanel />
+        </Layout>
+      </ProtectedRoute>
     ),
   },
   {
     path: '/perfil',
     element: (
-      <Layout>
-        <Profile />
-      </Layout>
+      <ProtectedRoute>
+        <Layout>
+          <Profile />
+        </Layout>
+      </ProtectedRoute>
     ),
   },
 ]);

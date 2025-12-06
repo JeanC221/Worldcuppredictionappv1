@@ -6,6 +6,7 @@ import { useAdmin } from '../hooks/useAdmin';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { NotificationBell } from './NotificationBell';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -20,7 +21,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  // Obtener inicial para el avatar fallback
   const getInitial = () => {
     if (user?.displayName) return user.displayName.charAt(0).toUpperCase();
     if (user?.email) return user.email.charAt(0).toUpperCase();
@@ -37,47 +37,63 @@ export function Layout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <Link to="/dashboard" className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
-                <Trophy className="size-6 text-white" />
+          <div className="flex items-center justify-between h-20">
+            {/* Logo */}
+            <Link to="/dashboard" className="flex items-center gap-3 flex-shrink-0">
+              <div className="w-12 h-12 flex items-center justify-center">
+                <img 
+                  src="/logo.png" 
+                  alt="Polla Mundialista" 
+                  className="max-h-12 max-w-12 object-contain"
+                  onError={(e) => {
+                    // Fallback si no hay logo
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
               </div>
               <div className="hidden md:block">
-                <h1 className="text-base text-gray-900 leading-none">Polla Mundialista</h1>
-                <p className="text-xs text-gray-500">FIFA 2026</p>
+                <h1 className="text-lg font-bold text-[#1E3A5F] leading-tight">Polla Mundialista</h1>
+                <p className="text-xs text-slate-500 font-medium">FIFA World Cup 2026</p>
               </div>
             </Link>
 
-            <nav className="hidden lg:flex items-center gap-2">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                      isActive
-                        ? 'bg-orange-50 text-orange-600 border border-orange-200'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Icon className="size-4" />
-                    <span className="text-sm">{item.label}</span>
-                  </Link>
-                );
-              })}
-              
+            {/* Navegación Desktop - Centrada */}
+            <nav className="hidden lg:flex items-center flex-1 justify-center px-8">
+              <div className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.path;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all ${
+                        isActive
+                          ? 'bg-[#1E3A5F] text-white shadow-md'
+                          : 'text-slate-600 hover:text-[#1E3A5F] hover:bg-white'
+                      }`}
+                    >
+                      <Icon className="size-4" />
+                      <span className="text-sm">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </nav>
+
+            {/* Acciones de usuario */}
+            <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
               {isAdmin && (
                 <Link
                   to="/admin"
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all ${
                     location.pathname === '/admin'
-                      ? 'bg-red-50 text-red-600 border border-red-200'
-                      : 'text-red-600 hover:text-red-700 hover:bg-red-50'
+                      ? 'bg-[#E85D24] text-white shadow-md'
+                      : 'text-[#E85D24] border-2 border-[#E85D24] hover:bg-[#E85D24] hover:text-white'
                   }`}
                 >
                   <Shield className="size-4" />
@@ -85,38 +101,44 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               )}
 
+              {/* Separador */}
+              <div className="w-px h-8 bg-slate-200" />
+
+              {/* Campana de notificaciones */}
+              <NotificationBell />
+
               {/* Avatar del usuario */}
               <Link
                 to="/perfil"
-                className={`ml-2 p-1 rounded-full transition-all hover:ring-2 hover:ring-orange-300 ${
-                  location.pathname === '/perfil' ? 'ring-2 ring-orange-500' : ''
+                className={`p-1 rounded-full transition-all hover:ring-2 hover:ring-[#1E3A5F]/30 ${
+                  location.pathname === '/perfil' ? 'ring-2 ring-[#1E3A5F]' : ''
                 }`}
                 title="Mi Perfil"
               >
-                <Avatar className="size-9 border-2 border-gray-200 hover:border-orange-300 transition-colors">
+                <Avatar className="size-10 border-2 border-slate-200 hover:border-[#1E3A5F] transition-colors">
                   <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'Usuario'} />
-                  <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-500 text-white text-sm font-bold">
+                  <AvatarFallback className="bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white text-sm font-bold">
                     {getInitial()}
                   </AvatarFallback>
                 </Avatar>
               </Link>
-            </nav>
+            </div>
 
+            {/* Mobile */}
             <div className="flex items-center gap-2 lg:hidden">
-              {/* Avatar móvil */}
+              <NotificationBell />
               <Link to="/perfil" className="p-1">
-                <Avatar className="size-8 border-2 border-gray-200">
+                <Avatar className="size-9 border-2 border-slate-200">
                   <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'Usuario'} />
-                  <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-500 text-white text-xs font-bold">
+                  <AvatarFallback className="bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white text-xs font-bold">
                     {getInitial()}
                   </AvatarFallback>
                 </Avatar>
               </Link>
-
               <Button
                 variant="outline"
                 size="sm"
-                className="border-gray-300"
+                className="border-slate-300"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               >
                 <Menu className="size-5" />
@@ -124,9 +146,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
+          {/* Menú móvil */}
           {isMobileMenuOpen && (
-            <div className="lg:hidden py-4 border-t border-gray-200">
-              <nav className="flex flex-col gap-2">
+            <div className="lg:hidden py-4 border-t border-slate-200">
+              <nav className="flex flex-col gap-1">
                 {navItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = location.pathname === item.path;
@@ -135,10 +158,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       key={item.path}
                       to={item.path}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
                         isActive
-                          ? 'bg-orange-50 text-orange-600 border border-orange-200'
-                          : 'text-gray-600 hover:bg-gray-100'
+                          ? 'bg-[#1E3A5F] text-white'
+                          : 'text-slate-600 hover:bg-slate-100'
                       }`}
                     >
                       <Icon className="size-5" />
@@ -151,10 +174,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Link
                     to="/admin"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
                       location.pathname === '/admin'
-                        ? 'bg-red-50 text-red-600 border border-red-200'
-                        : 'text-red-600 hover:bg-red-50'
+                        ? 'bg-[#E85D24] text-white'
+                        : 'text-[#E85D24] hover:bg-orange-50'
                     }`}
                   >
                     <Shield className="size-5" />
@@ -162,14 +185,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </Link>
                 )}
 
-                {/* Perfil en menú móvil */}
                 <Link
                   to="/perfil"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
                     location.pathname === '/perfil'
-                      ? 'bg-orange-50 text-orange-600 border border-orange-200'
-                      : 'text-gray-600 hover:bg-gray-100'
+                      ? 'bg-[#1E3A5F] text-white'
+                      : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
                   <User className="size-5" />
@@ -181,21 +203,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">{children}</main>
+      {/* Main content - flex-1 para empujar el footer */}
+      <main className="container mx-auto px-4 py-8 flex-1">{children}</main>
 
-      <footer className="bg-white border-t border-gray-200 mt-16">
-        <div className="container mx-auto px-4 py-8">
+      {/* Footer */}
+      <footer className="bg-[#1E3A5F] text-white">
+        <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
-                <Trophy className="size-5 text-white" />
+              <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
+                <Trophy className="size-5 text-[#D4A824]" />
               </div>
               <div>
-                <div className="text-sm text-gray-900">Polla Mundialista 2026</div>
-                <div className="text-xs text-gray-500">Sistema de Predicciones Deportivas</div>
+                <div className="text-sm font-semibold">Polla Mundialista 2026</div>
+                <div className="text-xs text-slate-300">Sistema de Predicciones Deportivas</div>
               </div>
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-slate-300">
               © 2026 Todos los derechos reservados
             </div>
           </div>

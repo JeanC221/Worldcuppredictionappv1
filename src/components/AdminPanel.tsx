@@ -9,7 +9,7 @@ import { Match } from '../utils/types';
 import { useAdmin } from '../hooks/useAdmin';
 import { 
   Shield, Database, Trophy, Users, RefreshCw, Save, 
-  CheckCircle, AlertTriangle, Loader2
+  CheckCircle, AlertTriangle, Loader2, ClipboardList, Settings
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -22,6 +22,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from './ui/accordion';
+import { broadcastNotification, createNotification } from '../hooks/useNotifications';
 
 interface MatchWithScore extends Match {
   status?: string;
@@ -50,7 +51,6 @@ export function AdminPanel() {
     totalPredictions: 0
   });
 
-  // Cargar datos cuando confirmamos que es admin
   useEffect(() => {
     if (!adminLoading && isAdmin) {
       fetchData();
@@ -59,10 +59,8 @@ export function AdminPanel() {
     }
   }, [isAdmin, adminLoading]);
 
-  // Cargar datos
   const fetchData = async () => {
     try {
-      // Cargar partidos
       const matchesSnap = await getDocs(query(collection(db, 'partidos'), orderBy('group'), orderBy('date')));
       const groupedMatches: { [group: string]: MatchWithScore[] } = {};
       let played = 0;
@@ -83,7 +81,6 @@ export function AdminPanel() {
       
       setMatches(groupedMatches);
       
-      // Cargar stats de usuarios
       const usersSnap = await getDocs(collection(db, 'polla_completa'));
       
       setStats({
@@ -100,7 +97,6 @@ export function AdminPanel() {
     }
   };
 
-  // Guardar resultado de un partido
   const handleSaveScore = async (matchId: string, group: string) => {
     const scores = editedScores[matchId];
     if (!scores) return;
@@ -108,7 +104,6 @@ export function AdminPanel() {
     const score1 = scores.score1 === '' ? undefined : parseInt(scores.score1);
     const score2 = scores.score2 === '' ? undefined : parseInt(scores.score2);
     
-    // Validación
     if (score1 !== undefined && (isNaN(score1) || score1 < 0 || score1 > 20)) {
       alert('Score 1 inválido');
       return;
@@ -121,13 +116,14 @@ export function AdminPanel() {
     setSavingMatch(matchId);
     
     try {
+      const matchData = matches[group]?.find(m => m.id === matchId);
+      
       await updateDoc(doc(db, 'partidos', matchId), {
         score1: score1 ?? null,
         score2: score2 ?? null,
         status: score1 !== undefined ? 'FINISHED' : 'SCHEDULED'
       });
       
-      // Actualizar estado local
       setMatches(prev => {
         const updatedGroup = prev[group].map(m => 
           m.id === matchId 
@@ -137,12 +133,55 @@ export function AdminPanel() {
         return { ...prev, [group]: updatedGroup };
       });
       
-      // Limpiar edición
       setEditedScores(prev => {
         const newState = { ...prev };
         delete newState[matchId];
         return newState;
       });
+
+      if (score1 !== undefined && score2 !== undefined && matchData) {
+        const pollasSnap = await getDocs(collection(db, 'polla_completa'));
+        
+        for (const pollaDoc of pollasSnap.docs) {
+          const userId = pollaDoc.data().userId;
+          const userPredictions = pollaDoc.data().groupPredictions || {};
+          const userPred = userPredictions[matchId];
+          
+          if (userPred) {
+            const isExact = userPred.score1 === score1 && userPred.score2 === score2;
+            const predResult = userPred.score1 > userPred.score2 ? 1 : userPred.score1 < userPred.score2 ? -1 : 0;
+            const actualResult = score1 > score2 ? 1 : score1 < score2 ? -1 : 0;
+            const isCorrectWinner = !isExact && predResult === actualResult;
+            
+            if (isExact) {
+              await createNotification(
+                userId,
+                'exact_match',
+                '¡Marcador Exacto! +5 pts',
+                `Acertaste ${matchData.team1} ${score1} - ${score2} ${matchData.team2}`,
+                { matchId }
+              );
+            } else if (isCorrectWinner) {
+              await createNotification(
+                userId,
+                'match_result',
+                '¡Ganador Correcto! +3 pts',
+                `Acertaste el ganador de ${matchData.team1} vs ${matchData.team2}`,
+                { matchId }
+              );
+            }
+          }
+        }
+        
+        const allUserIds = pollasSnap.docs.map(d => d.data().userId);
+        await broadcastNotification(
+          allUserIds,
+          'match_result',
+          'Resultado Actualizado',
+          `${matchData.team1} ${score1} - ${score2} ${matchData.team2}`,
+          { matchId }
+        );
+      }
       
     } catch (error) {
       console.error('Error guardando:', error);
@@ -152,7 +191,6 @@ export function AdminPanel() {
     }
   };
 
-  // Inicializar base de datos
   const handleSeedDatabase = async () => {
     const confirm = window.confirm(
       `¿Estás seguro? Esto creará ${groupFixtures.reduce((acc, g) => acc + g.matches.length, 0)} partidos en Firebase.\n\nLos partidos existentes con el mismo ID serán sobrescritos.`
@@ -181,35 +219,37 @@ export function AdminPanel() {
       });
       
       await batch.commit();
-      setSeedingStatus(`✅ ¡Éxito! ${count} partidos creados.`); // 👈 Corregido
-      
-      // Recargar datos
+      setSeedingStatus(`${count} partidos creados exitosamente`);
       await fetchData();
       
     } catch (error: any) {
-      setSeedingStatus(`❌ Error: ${error.message}`); // 👈 Corregido
+      setSeedingStatus(`Error: ${error.message}`);
     } finally {
       setIsSeeding(false);
     }
   };
 
-  // Loading
   if (adminLoading || dataLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <Loader2 className="size-10 animate-spin text-orange-500" />
+        <Loader2 className="size-10 animate-spin text-[#1E3A5F]" />
       </div>
     );
   }
 
-  // Si no es admin
   if (!isAdmin) {
     return (
       <div className="max-w-2xl mx-auto py-20 text-center">
-        <Shield className="size-16 text-red-500 mx-auto mb-4" />
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Acceso Denegado</h1>
-        <p className="text-gray-600 mb-6">No tienes permisos para acceder al panel de administración.</p>
-        <Button onClick={() => navigate('/dashboard')} variant="outline">
+        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <Shield className="size-10 text-red-500" />
+        </div>
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">Acceso Denegado</h1>
+        <p className="text-slate-600 mb-6">No tienes permisos para acceder al panel de administración.</p>
+        <Button 
+          onClick={() => navigate('/dashboard')} 
+          variant="outline"
+          className="border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#1E3A5F] hover:text-white"
+        >
           Volver al Dashboard
         </Button>
       </div>
@@ -222,75 +262,95 @@ export function AdminPanel() {
     <div className="max-w-7xl mx-auto pb-10">
       {/* Header */}
       <div className="mb-8 flex items-center gap-4">
-        <div className="w-12 h-12 bg-red-500 rounded-xl flex items-center justify-center">
-          <Shield className="size-6 text-white" />
+        <div className="w-14 h-14 bg-gradient-to-br from-[#E85D24] to-[#C44D1A] rounded-2xl flex items-center justify-center shadow-lg">
+          <Shield className="size-7 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Panel de Administración</h1>
-          <p className="text-gray-600">Gestiona partidos, resultados y configuración</p>
+          <h1 className="text-2xl font-bold text-slate-900">Panel de Administración</h1>
+          <p className="text-slate-500">Gestiona partidos, resultados y configuración</p>
         </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid md:grid-cols-4 gap-4 mb-8">
-        <Card>
+        <Card className="border-0 shadow-md bg-white rounded-2xl overflow-hidden">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Total Partidos</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalMatches}</p>
+                <p className="text-sm text-slate-500 font-medium">Total Partidos</p>
+                <p className="text-3xl font-bold text-slate-900">{stats.totalMatches}</p>
               </div>
-              <Trophy className="size-8 text-orange-500" />
+              <div className="w-12 h-12 bg-[#1E3A5F]/10 rounded-xl flex items-center justify-center">
+                <Trophy className="size-6 text-[#1E3A5F]" />
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-0 shadow-md bg-white rounded-2xl overflow-hidden">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Partidos Jugados</p>
+                <p className="text-sm text-slate-500 font-medium">Partidos Jugados</p>
                 <p className="text-3xl font-bold text-emerald-600">{stats.playedMatches}</p>
               </div>
-              <CheckCircle className="size-8 text-emerald-500" />
+              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
+                <CheckCircle className="size-6 text-emerald-600" />
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-0 shadow-md bg-white rounded-2xl overflow-hidden">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Usuarios</p>
-                <p className="text-3xl font-bold text-blue-600">{stats.totalUsers}</p>
+                <p className="text-sm text-slate-500 font-medium">Usuarios</p>
+                <p className="text-3xl font-bold text-[#1E3A5F]">{stats.totalUsers}</p>
               </div>
-              <Users className="size-8 text-blue-500" />
+              <div className="w-12 h-12 bg-[#1E3A5F]/10 rounded-xl flex items-center justify-center">
+                <Users className="size-6 text-[#1E3A5F]" />
+              </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-0 shadow-md bg-white rounded-2xl overflow-hidden">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Predicciones</p>
-                <p className="text-3xl font-bold text-purple-600">{stats.totalPredictions}</p>
+                <p className="text-sm text-slate-500 font-medium">Predicciones</p>
+                <p className="text-3xl font-bold text-[#D4A824]">{stats.totalPredictions}</p>
               </div>
-              <Database className="size-8 text-purple-500" />
+              <div className="w-12 h-12 bg-[#D4A824]/10 rounded-xl flex items-center justify-center">
+                <Database className="size-6 text-[#D4A824]" />
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - Rediseñadas */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="matches">📋 Resultados</TabsTrigger>
-          <TabsTrigger value="tools">🛠️ Herramientas</TabsTrigger>
+        <TabsList className="mb-6 bg-slate-100 p-1.5 rounded-2xl h-auto">
+          <TabsTrigger 
+            value="matches" 
+            className="px-6 py-3 rounded-xl data-[state=active]:bg-[#1E3A5F] data-[state=active]:text-white data-[state=active]:shadow-md"
+          >
+            <ClipboardList className="size-4 mr-2" />
+            Resultados
+          </TabsTrigger>
+          <TabsTrigger 
+            value="tools"
+            className="px-6 py-3 rounded-xl data-[state=active]:bg-[#1E3A5F] data-[state=active]:text-white data-[state=active]:shadow-md"
+          >
+            <Settings className="size-4 mr-2" />
+            Herramientas
+          </TabsTrigger>
         </TabsList>
 
         {/* Tab: Resultados */}
         <TabsContent value="matches">
-          <Alert className="mb-6 border-blue-200 bg-blue-50">
-            <AlertTriangle className="size-4 text-blue-600" />
-            <AlertDescription className="text-blue-900">
+          <Alert className="mb-6 border-[#1E3A5F]/20 bg-[#1E3A5F]/5 rounded-xl">
+            <AlertTriangle className="size-4 text-[#1E3A5F]" />
+            <AlertDescription className="text-[#1E3A5F]">
               Ingresa los resultados de cada partido. Los puntos de todos los usuarios se recalculan automáticamente.
             </AlertDescription>
           </Alert>
@@ -300,16 +360,16 @@ export function AdminPanel() {
               <AccordionItem 
                 key={group} 
                 value={group}
-                className="border border-gray-200 rounded-xl bg-white px-4 shadow-sm"
+                className="border border-slate-200 rounded-2xl bg-white px-4 shadow-sm overflow-hidden"
               >
                 <AccordionTrigger className="hover:no-underline py-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white font-bold">{group}</span>
+                    <div className="w-11 h-11 bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] rounded-xl flex items-center justify-center shadow-md">
+                      <span className="text-white font-bold text-lg">{group}</span>
                     </div>
                     <div className="text-left">
-                      <span className="text-gray-900 font-semibold">Grupo {group}</span>
-                      <span className="text-xs text-gray-500 block">
+                      <span className="text-slate-900 font-semibold">Grupo {group}</span>
+                      <span className="text-xs text-slate-500 block">
                         {matches[group]?.filter(m => m.score1 !== null && m.score1 !== undefined).length || 0} / {matches[group]?.length || 0} jugados
                       </span>
                     </div>
@@ -326,22 +386,24 @@ export function AdminPanel() {
                       return (
                         <div 
                           key={match.id}
-                          className={`flex items-center gap-4 p-3 rounded-lg border ${
-                            hasResult ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'
+                          className={`flex items-center gap-4 p-4 rounded-xl border-2 transition-all ${
+                            hasResult 
+                              ? 'bg-emerald-50 border-emerald-200' 
+                              : 'bg-slate-50 border-slate-200'
                           }`}
                         >
-                          <div className="text-xs text-gray-500 w-16">
+                          <div className="text-xs text-slate-400 font-mono w-14">
                             {match.id}
                           </div>
                           
-                          <div className="flex-1 flex items-center justify-center gap-2">
-                            <span className="text-sm text-right w-28 truncate">{match.team1}</span>
+                          <div className="flex-1 flex items-center justify-center gap-3">
+                            <span className="text-sm font-medium text-right w-28 truncate">{match.team1}</span>
                             
                             <Input
                               type="number"
                               min="0"
                               max="20"
-                              className="w-14 h-9 text-center"
+                              className="w-14 h-10 text-center font-bold rounded-xl border-2 border-slate-200 focus:border-[#1E3A5F]"
                               value={currentScore1}
                               onChange={(e) => setEditedScores(prev => ({
                                 ...prev,
@@ -352,13 +414,13 @@ export function AdminPanel() {
                               }))}
                             />
                             
-                            <span className="text-gray-400">-</span>
+                            <span className="text-slate-400 font-bold">vs</span>
                             
                             <Input
                               type="number"
                               min="0"
                               max="20"
-                              className="w-14 h-9 text-center"
+                              className="w-14 h-10 text-center font-bold rounded-xl border-2 border-slate-200 focus:border-[#1E3A5F]"
                               value={currentScore2}
                               onChange={(e) => setEditedScores(prev => ({
                                 ...prev,
@@ -369,14 +431,18 @@ export function AdminPanel() {
                               }))}
                             />
                             
-                            <span className="text-sm text-left w-28 truncate">{match.team2}</span>
+                            <span className="text-sm font-medium text-left w-28 truncate">{match.team2}</span>
                           </div>
                           
                           <Button
                             size="sm"
                             disabled={!isEditing || savingMatch === match.id}
                             onClick={() => handleSaveScore(match.id, group)}
-                            className={isEditing ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+                            className={`rounded-xl px-4 ${
+                              isEditing 
+                                ? 'bg-[#E85D24] hover:bg-[#C44D1A] text-white' 
+                                : 'bg-slate-200 text-slate-400'
+                            }`}
                           >
                             {savingMatch === match.id ? (
                               <Loader2 className="size-4 animate-spin" />
@@ -396,28 +462,30 @@ export function AdminPanel() {
 
         {/* Tab: Herramientas */}
         <TabsContent value="tools" className="space-y-6">
-          {/* Inicializar DB */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="size-5 text-orange-500" />
+          <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] text-white">
+              <CardTitle className="flex items-center gap-3">
+                <Database className="size-5" />
                 Inicializar Base de Datos
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">
+            <CardContent className="p-6 space-y-4">
+              <p className="text-slate-600">
                 Crea todos los partidos del Mundial 2026 en Firebase. 
                 Esto incluye <strong>12 grupos</strong> con <strong>6 partidos cada uno</strong> (72 partidos totales).
               </p>
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                <p className="text-sm text-amber-800">
-                  ⚠️ Los partidos existentes con el mismo ID serán sobrescritos. Los resultados ya ingresados se perderán.
-                </p>
+              <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+                <div className="flex gap-3">
+                  <AlertTriangle className="size-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-800">
+                    Los partidos existentes con el mismo ID serán sobrescritos. Los resultados ya ingresados se perderán.
+                  </p>
+                </div>
               </div>
               <Button 
                 onClick={handleSeedDatabase}
                 disabled={isSeeding}
-                className="bg-orange-600 hover:bg-orange-700"
+                className="bg-[#E85D24] hover:bg-[#C44D1A] text-white rounded-xl px-6"
               >
                 {isSeeding ? (
                   <>
@@ -432,32 +500,41 @@ export function AdminPanel() {
                 )}
               </Button>
               {seedingStatus && (
-                <p className={`text-sm font-medium ${
-                  seedingStatus.includes('✅') ? 'text-emerald-600' : 
-                  seedingStatus.includes('❌') ? 'text-red-600' : 'text-gray-600'
+                <div className={`flex items-center gap-2 p-3 rounded-xl ${
+                  seedingStatus.includes('Error') 
+                    ? 'bg-red-50 text-red-700' 
+                    : 'bg-emerald-50 text-emerald-700'
                 }`}>
-                  {seedingStatus}
-                </p>
+                  {seedingStatus.includes('Error') ? (
+                    <AlertTriangle className="size-4" />
+                  ) : (
+                    <CheckCircle className="size-4" />
+                  )}
+                  <span className="text-sm font-medium">{seedingStatus}</span>
+                </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Recalcular Rankings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <RefreshCw className="size-5 text-blue-500" />
+          <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-slate-700 to-slate-600 text-white">
+              <CardTitle className="flex items-center gap-3">
+                <RefreshCw className="size-5" />
                 Recalcular Rankings
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-gray-600">
+            <CardContent className="p-6 space-y-4">
+              <p className="text-slate-600">
                 Recalcula los puntos de todos los usuarios basándose en los resultados actuales.
                 Esto es útil si hubo algún error en el cálculo automático.
               </p>
-              <Button variant="outline" disabled>
+              <Button 
+                variant="outline" 
+                disabled
+                className="border-2 border-slate-300 text-slate-400 rounded-xl"
+              >
                 <RefreshCw className="size-4 mr-2" />
-                Recalcular (Próximamente)
+                Próximamente
               </Button>
             </CardContent>
           </Card>
