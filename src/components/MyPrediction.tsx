@@ -418,8 +418,11 @@ export function MyPrediction() {
               {userPrediction.knockoutPicks['F-1'] && (
                 <div className="col-span-2 md:col-span-4 text-center mb-4">
                   <div className="text-sm text-gray-500 mb-2">Tu Campeón</div>
-                  <div className="inline-block bg-gradient-to-r from-amber-400 to-amber-500 text-white px-6 py-3 rounded-xl font-bold text-lg shadow-lg">
-                    🏆 {userPrediction.knockoutPicks['F-1']}
+                  <div className="inline-flex items-center gap-2 bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-500 text-gray-900 px-8 py-4 rounded-xl font-bold text-xl shadow-lg border-2 border-yellow-300">
+                    <span className="text-2xl">🏆</span>
+                    <span className="text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
+                      {userPrediction.knockoutPicks['F-1']}
+                    </span>
                   </div>
                 </div>
               )}

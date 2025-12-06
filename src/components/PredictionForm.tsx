@@ -267,10 +267,19 @@ export function PredictionForm() {
               <h3 className="font-bold border-b mb-4 pb-2 text-lg">{{'R32':'Dieciseisavos','R16':'Octavos','QF':'Cuartos','SF':'Semifinal','F':'Final'}[r]}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {bracket.filter(m => m.round === r).map(m => (
-                  <div key={m.id} className={`bg-white border-2 rounded p-3 ${knockoutPicks[m.id] ? 'border-orange-200' : 'border-slate-100'}`}>
+                  <div key={m.id} className={`bg-white border-2 rounded p-3 ${knockoutPicks[m.id] ? 'border-orange-200' : 'border-slate-200'}`}>
                     {[m.team1, m.team2].map(t => (
-                      <button key={t} onClick={()=>pickWinner(m.id,t)} className={`w-full text-left p-2 rounded text-sm mb-1 flex justify-between ${knockoutPicks[m.id]===t ? 'bg-orange-500 text-white' : 'bg-slate-50 hover:bg-slate-100'}`}>
-                        <span className="truncate">{t}</span>{knockoutPicks[m.id]===t && <CheckCircle className="w-3 h-3"/>}
+                      <button 
+                        key={t} 
+                        onClick={()=>pickWinner(m.id,t)} 
+                        className={`w-full text-left p-2 rounded text-sm mb-1 flex justify-between transition-colors ${
+                          knockoutPicks[m.id]===t 
+                            ? 'bg-orange-500 text-white font-semibold' 
+                            : 'bg-gray-100 text-gray-800 hover:bg-gray-200 border border-gray-200'
+                        }`}
+                      >
+                        <span className="truncate">{t}</span>
+                        {knockoutPicks[m.id]===t && <CheckCircle className="w-3 h-3"/>}
                       </button>
                     ))}
                   </div>

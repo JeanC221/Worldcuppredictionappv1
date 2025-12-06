@@ -1,13 +1,31 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Trophy, ClipboardList, BarChart3, Users, Home, BookOpen, Menu, Shield } from 'lucide-react';
-import { useState } from 'react';
+import { Trophy, ClipboardList, BarChart3, Users, Home, BookOpen, Menu, Shield, User } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { useAdmin } from '../hooks/useAdmin';
+import { auth } from '../lib/firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { isAdmin } = useAdmin();
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Obtener inicial para el avatar fallback
+  const getInitial = () => {
+    if (user?.displayName) return user.displayName.charAt(0).toUpperCase();
+    if (user?.email) return user.email.charAt(0).toUpperCase();
+    return '?';
+  };
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: Home },
@@ -66,16 +84,44 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <span className="text-sm">Admin</span>
                 </Link>
               )}
+
+              {/* Avatar del usuario */}
+              <Link
+                to="/perfil"
+                className={`ml-2 p-1 rounded-full transition-all hover:ring-2 hover:ring-orange-300 ${
+                  location.pathname === '/perfil' ? 'ring-2 ring-orange-500' : ''
+                }`}
+                title="Mi Perfil"
+              >
+                <Avatar className="size-9 border-2 border-gray-200 hover:border-orange-300 transition-colors">
+                  <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'Usuario'} />
+                  <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-500 text-white text-sm font-bold">
+                    {getInitial()}
+                  </AvatarFallback>
+                </Avatar>
+              </Link>
             </nav>
 
-            <Button
-              variant="outline"
-              size="sm"
-              className="lg:hidden border-gray-300"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            >
-              <Menu className="size-5" />
-            </Button>
+            <div className="flex items-center gap-2 lg:hidden">
+              {/* Avatar móvil */}
+              <Link to="/perfil" className="p-1">
+                <Avatar className="size-8 border-2 border-gray-200">
+                  <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'Usuario'} />
+                  <AvatarFallback className="bg-gradient-to-br from-orange-500 to-red-500 text-white text-xs font-bold">
+                    {getInitial()}
+                  </AvatarFallback>
+                </Avatar>
+              </Link>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-gray-300"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              >
+                <Menu className="size-5" />
+              </Button>
+            </div>
           </div>
 
           {isMobileMenuOpen && (
@@ -115,6 +161,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <span>Panel Admin</span>
                   </Link>
                 )}
+
+                {/* Perfil en menú móvil */}
+                <Link
+                  to="/perfil"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    location.pathname === '/perfil'
+                      ? 'bg-orange-50 text-orange-600 border border-orange-200'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <User className="size-5" />
+                  <span>Mi Perfil</span>
+                </Link>
               </nav>
             </div>
           )}

@@ -8,6 +8,7 @@ import { Ranking } from '../components/Ranking';
 import { Community } from '../components/Community';
 import { Instructions } from '../components/Instructions';
 import { AdminPanel } from '../components/AdminPanel';
+import { Profile } from '../components/Profile';
 
 export const router = createBrowserRouter([
   {
@@ -67,6 +68,14 @@ export const router = createBrowserRouter([
     element: (
       <Layout>
         <AdminPanel />
+      </Layout>
+    ),
+  },
+  {
+    path: '/perfil',
+    element: (
+      <Layout>
+        <Profile />
       </Layout>
     ),
   },
