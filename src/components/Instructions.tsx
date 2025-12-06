@@ -1,290 +1,371 @@
-import { Trophy, Target, Award, Shield, Calendar, Lock, CheckCircle, Users, ClipboardList, Send, TrendingUp } from 'lucide-react';
+import { useState } from 'react';
+import { Trophy, Target, Award, Shield, Calendar, Lock, CheckCircle, Users, ClipboardList, Send, TrendingUp, HelpCircle, Medal } from 'lucide-react';
 import { Card, CardContent } from './ui/card';
 
+type Section = 'participate' | 'scoring' | 'ranking' | 'dates';
+
 export function Instructions() {
+  const [activeSection, setActiveSection] = useState<Section>('participate');
+
+  const sections = [
+    { id: 'participate' as Section, label: 'Cómo Participar', icon: ClipboardList, color: 'from-[#1E3A5F] to-[#2D4A6F]' },
+    { id: 'scoring' as Section, label: 'Puntuación', icon: Target, color: 'from-[#D4A824] to-[#E8C547]' },
+    { id: 'ranking' as Section, label: 'Ranking', icon: Medal, color: 'from-[#E85D24] to-[#F07D4A]' },
+    { id: 'dates' as Section, label: 'Fechas', icon: Calendar, color: 'from-slate-700 to-slate-600' },
+  ];
+
   return (
-    <div className="max-w-4xl mx-auto pb-10">
+    <div className="max-w-5xl mx-auto pb-10">
       {/* Header */}
-      <div className="text-center mb-12">
-        <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] rounded-2xl mb-6 shadow-xl">
-          <Trophy className="size-10 text-white" />
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] rounded-2xl mb-4 shadow-xl">
+          <HelpCircle className="size-8 text-white" />
         </div>
-        <h1 className="text-3xl font-bold text-slate-900 mb-3">Instrucciones y Sistema de Puntuación</h1>
-        <p className="text-slate-500 text-lg">Guía completa para participar en la Polla Mundialista 2026</p>
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">Instrucciones</h1>
+        <p className="text-slate-500">Guía completa para participar en la Polla Mundialista 2026</p>
       </div>
 
-      {/* How to Participate */}
-      <Card className="mb-8 border-0 shadow-lg rounded-2xl overflow-hidden">
-        <div className="bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] px-8 py-5">
-          <h2 className="text-xl font-bold text-white flex items-center gap-3">
-            <ClipboardList className="size-6" />
-            ¿Cómo Participar?
-          </h2>
-        </div>
-        <CardContent className="p-8">
-          <div className="space-y-6">
-            <div className="flex gap-5">
-              <div className="w-12 h-12 bg-[#E85D24] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-                <span className="text-white font-bold text-lg">1</span>
+      {/* Navigation Tabs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        {sections.map((section) => {
+          const Icon = section.icon;
+          const isActive = activeSection === section.id;
+          return (
+            <button
+              key={section.id}
+              onClick={() => setActiveSection(section.id)}
+              className={`relative p-4 rounded-2xl transition-all duration-300 ${
+                isActive 
+                  ? `bg-gradient-to-br ${section.color} text-white shadow-lg scale-[1.02]` 
+                  : 'bg-white text-slate-600 hover:bg-slate-50 shadow-md border border-slate-100'
+              }`}
+            >
+              <div className="flex flex-col items-center gap-2">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                  isActive ? 'bg-white/20' : 'bg-slate-100'
+                }`}>
+                  <Icon className={`size-6 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                </div>
+                <span className="text-sm font-semibold">{section.label}</span>
               </div>
-              <div>
-                <h4 className="text-lg font-semibold text-slate-900 mb-2">Regístrate en la Plataforma</h4>
-                <p className="text-slate-600">
-                  Crea tu cuenta con un correo electrónico válido o usa tu cuenta de Google. Tu información está protegida con Firebase Authentication.
+              {isActive && (
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-inherit rotate-45 rounded-sm" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Content Area */}
+      <div className="min-h-[400px]">
+        {/* Section: Cómo Participar */}
+        {activeSection === 'participate' && (
+          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden animate-in fade-in duration-300">
+            <div className="bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] px-8 py-5">
+              <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                <ClipboardList className="size-6" />
+                ¿Cómo Participar?
+              </h2>
+            </div>
+            <CardContent className="p-8">
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="flex gap-4 p-5 bg-slate-50 rounded-2xl">
+                  <div className="w-12 h-12 bg-[#E85D24] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                    <span className="text-white font-bold text-lg">1</span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-900 mb-1">Regístrate</h4>
+                    <p className="text-sm text-slate-600">
+                      Crea tu cuenta con email o Google. Tu información está protegida.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 p-5 bg-slate-50 rounded-2xl">
+                  <div className="w-12 h-12 bg-[#E85D24] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                    <span className="text-white font-bold text-lg">2</span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-900 mb-1">Completa tu Predicción</h4>
+                    <p className="text-sm text-slate-600">
+                      Pronostica los 72 partidos de fase de grupos y la fase eliminatoria.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 p-5 bg-slate-50 rounded-2xl">
+                  <div className="w-12 h-12 bg-[#E85D24] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                    <Send className="size-5 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-900 mb-1">Envía y Bloquea</h4>
+                    <p className="text-sm text-slate-600">
+                      Confirma tu polla antes del inicio. <span className="text-red-600 font-medium">Es irreversible.</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 p-5 bg-slate-50 rounded-2xl">
+                  <div className="w-12 h-12 bg-[#E85D24] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
+                    <TrendingUp className="size-5 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-900 mb-1">Sigue el Ranking</h4>
+                    <p className="text-sm text-slate-600">
+                      Tu puntaje se actualiza automáticamente con cada partido.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 p-5 bg-[#1E3A5F]/5 rounded-2xl border-2 border-[#1E3A5F]/10">
+                <div className="flex items-start gap-4">
+                  <Shield className="size-6 text-[#1E3A5F] flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-[#1E3A5F] mb-1">Transparencia Total</h4>
+                    <p className="text-sm text-slate-600">
+                      Todas las predicciones son inmutables y visibles en la sección "Comunidad".
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Section: Sistema de Puntuación */}
+        {activeSection === 'scoring' && (
+          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden animate-in fade-in duration-300">
+            <div className="bg-gradient-to-r from-[#D4A824] to-[#E8C547] px-8 py-5">
+              <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                <Target className="size-6" />
+                Sistema de Puntuación
+              </h2>
+            </div>
+            <CardContent className="p-8">
+              {/* Main scoring cards */}
+              <div className="grid md:grid-cols-2 gap-6 mb-8">
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-6 border-2 border-emerald-200">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-14 h-14 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
+                      <CheckCircle className="size-7 text-white" />
+                    </div>
+                    <div className="text-right">
+                      <div className="text-5xl font-bold text-emerald-600">+5</div>
+                      <div className="text-sm text-emerald-700 font-medium">puntos</div>
+                    </div>
+                  </div>
+                  <h4 className="text-lg font-bold text-slate-900 mb-2">Marcador Exacto</h4>
+                  <p className="text-slate-600 text-sm">
+                    Predices correctamente el marcador final (ej. México 2-1 Canadá)
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-[#1E3A5F]/5 to-[#1E3A5F]/10 rounded-2xl p-6 border-2 border-[#1E3A5F]/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-14 h-14 bg-[#1E3A5F] rounded-xl flex items-center justify-center shadow-lg">
+                      <Award className="size-7 text-white" />
+                    </div>
+                    <div className="text-right">
+                      <div className="text-5xl font-bold text-[#1E3A5F]">+3</div>
+                      <div className="text-sm text-[#1E3A5F] font-medium">puntos</div>
+                    </div>
+                  </div>
+                  <h4 className="text-lg font-bold text-slate-900 mb-2">Ganador/Empate</h4>
+                  <p className="text-slate-600 text-sm">
+                    Aciertas quién gana o si empatan, pero no el marcador exacto
+                  </p>
+                </div>
+              </div>
+
+              {/* Examples table */}
+              <div className="bg-white rounded-2xl overflow-hidden border-2 border-slate-200">
+                <div className="bg-slate-100 px-6 py-3 border-b border-slate-200">
+                  <h4 className="font-semibold text-slate-700">Ejemplos Prácticos</h4>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  <div className="flex items-center justify-between px-6 py-4 bg-emerald-50">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">5</span>
+                      <span className="text-slate-700">Predijiste <strong>2-1</strong> → Resultado <strong>2-1</strong></span>
+                    </div>
+                    <span className="text-emerald-600 font-semibold text-sm">Exacto ✓</span>
+                  </div>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 bg-[#1E3A5F] rounded-lg flex items-center justify-center text-white font-bold text-sm">3</span>
+                      <span className="text-slate-700">Predijiste <strong>3-0</strong> → Resultado <strong>1-0</strong></span>
+                    </div>
+                    <span className="text-[#1E3A5F] font-semibold text-sm">Ganador ✓</span>
+                  </div>
+                  <div className="flex items-center justify-between px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 bg-[#1E3A5F] rounded-lg flex items-center justify-center text-white font-bold text-sm">3</span>
+                      <span className="text-slate-700">Predijiste <strong>1-1</strong> → Resultado <strong>0-0</strong></span>
+                    </div>
+                    <span className="text-[#1E3A5F] font-semibold text-sm">Empate ✓</span>
+                  </div>
+                  <div className="flex items-center justify-between px-6 py-4 bg-red-50">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">0</span>
+                      <span className="text-slate-700">Predijiste <strong>2-1</strong> → Resultado <strong>1-2</strong></span>
+                    </div>
+                    <span className="text-red-500 font-semibold text-sm">Incorrecto ✗</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Section: Ranking y Empates */}
+        {activeSection === 'ranking' && (
+          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden animate-in fade-in duration-300">
+            <div className="bg-gradient-to-r from-[#E85D24] to-[#F07D4A] px-8 py-5">
+              <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                <Medal className="size-6" />
+                Ranking y Empates
+              </h2>
+            </div>
+            <CardContent className="p-8">
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center">
+                      <Trophy className="size-6 text-white" />
+                    </div>
+                    <h4 className="text-lg font-bold text-amber-900">Solo Puntos Totales</h4>
+                  </div>
+                  <p className="text-amber-800 text-sm">
+                    El ranking se ordena <span className="font-bold">únicamente por la suma total de puntos</span>. No hay criterios de desempate adicionales.
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 bg-slate-500 rounded-xl flex items-center justify-center">
+                      <Users className="size-6 text-white" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900">Empates Compartidos</h4>
+                  </div>
+                  <p className="text-slate-600 text-sm">
+                    Si hay empate en puntos, los participantes <span className="font-bold">comparten la misma posición</span> en el ranking.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 bg-white rounded-2xl border-2 border-slate-200 p-6">
+                <h4 className="font-semibold text-slate-900 mb-4">Ejemplo de Ranking con Empate</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-4 p-3 bg-[#D4A824]/10 rounded-xl">
+                    <span className="w-8 h-8 bg-[#D4A824] rounded-lg flex items-center justify-center text-white font-bold">1</span>
+                    <span className="flex-1 font-medium">Carlos</span>
+                    <span className="font-bold text-[#1E3A5F]">52 pts</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-3 bg-slate-100 rounded-xl">
+                    <span className="w-8 h-8 bg-slate-400 rounded-lg flex items-center justify-center text-white font-bold">2</span>
+                    <span className="flex-1 font-medium">María</span>
+                    <span className="font-bold text-[#1E3A5F]">45 pts</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-3 bg-slate-100 rounded-xl">
+                    <span className="w-8 h-8 bg-slate-400 rounded-lg flex items-center justify-center text-white font-bold">2</span>
+                    <span className="flex-1 font-medium">Juan</span>
+                    <span className="font-bold text-[#1E3A5F]">45 pts</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-3 bg-amber-700/10 rounded-xl">
+                    <span className="w-8 h-8 bg-amber-700 rounded-lg flex items-center justify-center text-white font-bold">4</span>
+                    <span className="flex-1 font-medium">Ana</span>
+                    <span className="font-bold text-[#1E3A5F]">40 pts</span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 mt-3">
+                  * María y Juan comparten el 2do lugar. Ana queda en 4to (no 3ro).
                 </p>
               </div>
-            </div>
+            </CardContent>
+          </Card>
+        )}
 
-            <div className="flex gap-5">
-              <div className="w-12 h-12 bg-[#E85D24] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-                <span className="text-white font-bold text-lg">2</span>
-              </div>
-              <div>
-                <h4 className="text-lg font-semibold text-slate-900 mb-2">Completa tu Predicción</h4>
-                <p className="text-slate-600">
-                  Pronostica el marcador de cada partido de la fase de grupos (12 grupos, 3 partidos por grupo). También selecciona a los equipos que crees que avanzarán en la fase eliminatoria hasta el campeón.
-                </p>
-              </div>
+        {/* Section: Fechas y Seguridad */}
+        {activeSection === 'dates' && (
+          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden animate-in fade-in duration-300">
+            <div className="bg-gradient-to-r from-slate-700 to-slate-600 px-8 py-5">
+              <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                <Calendar className="size-6" />
+                Fechas Importantes
+              </h2>
             </div>
-
-            <div className="flex gap-5">
-              <div className="w-12 h-12 bg-[#E85D24] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-                <Send className="size-5 text-white" />
-              </div>
-              <div>
-                <h4 className="text-lg font-semibold text-slate-900 mb-2">Envía y Bloquea</h4>
-                <p className="text-slate-600">
-                  Una vez satisfecho con tus predicciones, haz clic en "Enviar y Bloquear Polla". <span className="font-semibold text-red-600">Esta acción es irreversible</span> y debe hacerse antes del inicio del torneo.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-5">
-              <div className="w-12 h-12 bg-[#E85D24] rounded-xl flex items-center justify-center flex-shrink-0 shadow-md">
-                <TrendingUp className="size-5 text-white" />
-              </div>
-              <div>
-                <h4 className="text-lg font-semibold text-slate-900 mb-2">Sigue el Ranking</h4>
-                <p className="text-slate-600">
-                  A medida que se juegan los partidos, tu puntaje se actualiza automáticamente. Revisa el ranking en vivo para ver tu posición.
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Scoring System */}
-      <Card className="mb-8 border-0 shadow-lg rounded-2xl overflow-hidden">
-        <div className="bg-gradient-to-r from-[#D4A824] to-[#E8C547] px-8 py-5">
-          <h2 className="text-xl font-bold text-white flex items-center gap-3">
-            <Target className="size-6" />
-            Sistema de Puntuación
-          </h2>
-        </div>
-        <CardContent className="p-8">
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
-            {/* Exact Score */}
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-6 border-2 border-emerald-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-14 h-14 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
-                  <CheckCircle className="size-7 text-white" />
+            <CardContent className="p-8">
+              <div className="space-y-4 mb-8">
+                <div className="flex flex-col md:flex-row md:justify-between md:items-center p-5 bg-red-50 border-2 border-red-200 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <Lock className="size-6 text-red-500" />
+                    <div>
+                      <h4 className="font-semibold text-slate-900">Cierre de Predicciones</h4>
+                      <p className="text-sm text-slate-600">Último momento para enviar tu polla</p>
+                    </div>
+                  </div>
+                  <span className="mt-3 md:mt-0 inline-flex items-center px-4 py-2 bg-red-500 text-white rounded-xl font-bold text-sm">
+                    10 Jun 2026 - 23:59
+                  </span>
                 </div>
-                <div className="text-right">
-                  <div className="text-5xl font-bold text-emerald-600">+5</div>
-                  <div className="text-sm text-emerald-700 font-medium">puntos</div>
+                
+                <div className="flex flex-col md:flex-row md:justify-between md:items-center p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <Trophy className="size-6 text-[#1E3A5F]" />
+                    <div>
+                      <h4 className="font-semibold text-slate-900">Inicio del Torneo</h4>
+                      <p className="text-sm text-slate-600">Primer partido oficial</p>
+                    </div>
+                  </div>
+                  <span className="mt-3 md:mt-0 inline-flex items-center px-4 py-2 bg-[#1E3A5F] text-white rounded-xl font-bold text-sm">
+                    11 Jun 2026
+                  </span>
+                </div>
+                
+                <div className="flex flex-col md:flex-row md:justify-between md:items-center p-5 bg-[#D4A824]/10 border-2 border-[#D4A824]/30 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <Award className="size-6 text-[#D4A824]" />
+                    <div>
+                      <h4 className="font-semibold text-slate-900">Final del Mundial</h4>
+                      <p className="text-sm text-slate-600">Cierre de puntuación</p>
+                    </div>
+                  </div>
+                  <span className="mt-3 md:mt-0 inline-flex items-center px-4 py-2 bg-[#D4A824] text-white rounded-xl font-bold text-sm">
+                    19 Jul 2026
+                  </span>
                 </div>
               </div>
-              <h4 className="text-lg font-bold text-slate-900 mb-2">Marcador Exacto</h4>
-              <p className="text-slate-600">
-                Predices correctamente el marcador final del partido (ej. México 2-1 Canadá)
-              </p>
-            </div>
 
-            {/* Correct Winner */}
-            <div className="bg-gradient-to-br from-[#1E3A5F]/5 to-[#1E3A5F]/10 rounded-2xl p-6 border-2 border-[#1E3A5F]/20">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-14 h-14 bg-[#1E3A5F] rounded-xl flex items-center justify-center shadow-lg">
-                  <Award className="size-7 text-white" />
+              {/* Security */}
+              <div className="bg-[#1E3A5F]/5 rounded-2xl p-6 border-2 border-[#1E3A5F]/10">
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="w-12 h-12 bg-[#1E3A5F] rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Shield className="size-6 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-[#1E3A5F] mb-1">Seguridad y Transparencia</h4>
+                    <p className="text-sm text-slate-600">
+                      Todas las predicciones son inmutables una vez enviadas y visibles para todos.
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-5xl font-bold text-[#1E3A5F]">+3</div>
-                  <div className="text-sm text-[#1E3A5F] font-medium">puntos</div>
-                </div>
-              </div>
-              <h4 className="text-lg font-bold text-slate-900 mb-2">Ganador/Empate Correcto</h4>
-              <p className="text-slate-600">
-                Predices el equipo ganador o el empate, pero no el marcador exacto (ej. predijiste 3-1 y fue 2-0, o predijiste 1-1 y fue 0-0)
-              </p>
-            </div>
-          </div>
-
-          {/* Scoring Matrix */}
-          <div className="bg-white rounded-2xl overflow-hidden border-2 border-slate-200 shadow-sm">
-            <table className="w-full">
-              <thead className="bg-[#1E3A5F]">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-white">Tipo de Acierto</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-white">Puntos</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-white">Ejemplo</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                <tr className="bg-emerald-50">
-                  <td className="px-6 py-4 font-medium text-slate-900">Marcador Exacto</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center justify-center w-10 h-10 bg-emerald-500 rounded-lg text-white font-bold">5</span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">Predijiste 2-1 → Resultado 2-1</td>
-                </tr>
-                <tr className="bg-[#1E3A5F]/5">
-                  <td className="px-6 py-4 font-medium text-slate-900">Ganador Correcto</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center justify-center w-10 h-10 bg-[#1E3A5F] rounded-lg text-white font-bold">3</span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">Predijiste 3-0 → Resultado 1-0</td>
-                </tr>
-                <tr className="bg-[#1E3A5F]/5">
-                  <td className="px-6 py-4 font-medium text-slate-900">Empate Correcto</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center justify-center w-10 h-10 bg-[#1E3A5F] rounded-lg text-white font-bold">3</span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">Predijiste 1-1 → Resultado 0-0</td>
-                </tr>
-                <tr className="bg-red-50">
-                  <td className="px-6 py-4 font-medium text-slate-900">Predicción Incorrecta</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center justify-center w-10 h-10 bg-red-500 rounded-lg text-white font-bold">0</span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-600">Predijiste 2-1 → Resultado 1-2</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Ranking & Ties */}
-      <Card className="mb-8 border-0 shadow-lg rounded-2xl overflow-hidden">
-        <div className="bg-gradient-to-r from-[#E85D24] to-[#F07D4A] px-8 py-5">
-          <h2 className="text-xl font-bold text-white flex items-center gap-3">
-            <Users className="size-6" />
-            Ranking y Empates
-          </h2>
-        </div>
-        <CardContent className="p-8">
-          <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 mb-6">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Trophy className="size-6 text-white" />
-              </div>
-              <div>
-                <h4 className="text-lg font-bold text-amber-900 mb-2">Solo importan los Puntos Totales</h4>
-                <p className="text-amber-800">
-                  El ranking se ordena <span className="font-bold">únicamente por la suma total de puntos</span>. No hay criterios de desempate adicionales.
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-6">
-            <h4 className="text-lg font-semibold text-slate-900 mb-3 flex items-center gap-2">
-              <Users className="size-5 text-slate-600" />
-              ¿Qué pasa si hay empate en puntos?
-            </h4>
-            <p className="text-slate-600 mb-4">
-              Si dos o más participantes tienen la misma cantidad de puntos totales, <span className="font-semibold">quedarán empatados en el ranking</span>. Compartirán la misma posición.
-            </p>
-            <div className="bg-white rounded-xl p-4 border border-slate-200">
-              <p className="text-sm text-slate-500">
-                <span className="font-semibold text-slate-700">Ejemplo:</span> Si Juan tiene 45 puntos y María también tiene 45 puntos, ambos aparecerán en la misma posición del ranking (ej. ambos en 3er lugar).
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Important Dates */}
-      <Card className="mb-8 border-0 shadow-lg rounded-2xl overflow-hidden">
-        <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-8 py-5">
-          <h2 className="text-xl font-bold text-white flex items-center gap-3">
-            <Calendar className="size-6" />
-            Fechas Importantes
-          </h2>
-        </div>
-        <CardContent className="p-8">
-          <div className="space-y-4">
-            <div className="flex flex-col md:flex-row md:justify-between md:items-center p-5 bg-red-50 border-2 border-red-200 rounded-2xl">
-              <div>
-                <h4 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                  <Lock className="size-5 text-red-500" />
-                  Cierre de Predicciones
-                </h4>
-                <p className="text-slate-600 mt-1">Último momento para enviar tu polla</p>
-              </div>
-              <span className="mt-3 md:mt-0 inline-flex items-center px-4 py-2 bg-red-500 text-white rounded-xl font-bold">
-                10 Jun 2026 - 23:59
-              </span>
-            </div>
-            
-            <div className="flex flex-col md:flex-row md:justify-between md:items-center p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl">
-              <div>
-                <h4 className="text-lg font-semibold text-slate-900">Inicio del Torneo</h4>
-                <p className="text-slate-600 mt-1">Primer partido oficial</p>
-              </div>
-              <span className="mt-3 md:mt-0 inline-flex items-center px-4 py-2 bg-[#1E3A5F] text-white rounded-xl font-bold">
-                11 Jun 2026 - 12:00
-              </span>
-            </div>
-            
-            <div className="flex flex-col md:flex-row md:justify-between md:items-center p-5 bg-[#D4A824]/10 border-2 border-[#D4A824]/30 rounded-2xl">
-              <div>
-                <h4 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                  <Trophy className="size-5 text-[#D4A824]" />
-                  Final del Mundial
-                </h4>
-                <p className="text-slate-600 mt-1">Último partido y cierre de puntuación</p>
-              </div>
-              <span className="mt-3 md:mt-0 inline-flex items-center px-4 py-2 bg-[#D4A824] text-white rounded-xl font-bold">
-                19 Jul 2026
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Security Notice */}
-      <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-        <div className="bg-gradient-to-r from-[#1E3A5F]/10 to-[#1E3A5F]/5 px-8 py-8">
-          <div className="flex items-start gap-5">
-            <div className="w-14 h-14 bg-[#1E3A5F] rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
-              <Shield className="size-7 text-white" />
-            </div>
-            <div>
-              <h4 className="text-xl font-bold text-[#1E3A5F] mb-3">
-                Transparencia y Seguridad
-              </h4>
-              <p className="text-slate-600 mb-4">
-                Todas las predicciones son <span className="font-semibold">inmutables una vez enviadas</span>. Puedes consultar la predicción de cualquier participante en la sección "Comunidad" para garantizar transparencia total.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <div className="inline-flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-                  <Lock className="size-4 text-[#1E3A5F]" />
-                  <span className="text-sm font-medium text-slate-700">Predicciones bloqueadas</span>
-                </div>
-                <div className="inline-flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-                  <Users className="size-4 text-[#1E3A5F]" />
-                  <span className="text-sm font-medium text-slate-700">100% transparente</span>
-                </div>
-                <div className="inline-flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
-                  <Shield className="size-4 text-[#1E3A5F]" />
-                  <span className="text-sm font-medium text-slate-700">Firebase Authentication</span>
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600">
+                    <Lock className="size-3" /> Predicciones bloqueadas
+                  </span>
+                  <span className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600">
+                    <Users className="size-3" /> 100% transparente
+                  </span>
+                  <span className="inline-flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600">
+                    <Shield className="size-3" /> Firebase Auth
+                  </span>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </Card>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
