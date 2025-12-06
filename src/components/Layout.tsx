@@ -3,6 +3,7 @@ import { Trophy, ClipboardList, BarChart3, Users, Home, BookOpen, Menu, Shield, 
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { useAdmin } from '../hooks/useAdmin';
+import { useHasPrediction } from '../hooks/useHasPrediction';
 import { auth } from '../lib/firebase';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -12,6 +13,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { isAdmin } = useAdmin();
+  const { hasPrediction } = useHasPrediction();
   const [user, setUser] = useState<FirebaseUser | null>(null);
 
   useEffect(() => {
@@ -27,14 +29,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return '?';
   };
 
-  const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: Home },
-    { path: '/prediccion', label: 'Predicción', icon: ClipboardList },
-    { path: '/mi-polla', label: 'Mi Polla', icon: Trophy },
-    { path: '/ranking', label: 'Ranking', icon: BarChart3 },
-    { path: '/comunidad', label: 'Comunidad', icon: Users },
-    { path: '/instrucciones', label: 'Instrucciones', icon: BookOpen },
+  // Items base de navegación
+  const allNavItems = [
+    { path: '/dashboard', label: 'Dashboard', icon: Home, requiresPrediction: false },
+    { path: '/prediccion', label: 'Predicción', icon: ClipboardList, requiresPrediction: false },
+    { path: '/mi-polla', label: 'Mi Polla', icon: Trophy, requiresPrediction: false },
+    { path: '/ranking', label: 'Ranking', icon: BarChart3, requiresPrediction: true },
+    { path: '/comunidad', label: 'Comunidad', icon: Users, requiresPrediction: true },
+    { path: '/instrucciones', label: 'Instrucciones', icon: BookOpen, requiresPrediction: false },
   ];
+
+  // Filtrar items según si tiene predicción
+  const navItems = allNavItems.filter(item => 
+    !item.requiresPrediction || hasPrediction
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

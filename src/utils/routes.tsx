@@ -10,6 +10,7 @@ import { Instructions } from '../components/Instructions';
 import { AdminPanel } from '../components/AdminPanel';
 import { Profile } from '../components/Profile';
 import { ProtectedRoute } from '../components/ProtectedRoute';
+import { RequiresPrediction } from '../components/RequiresPrediction';
 
 export const router = createBrowserRouter([
   {
@@ -51,7 +52,9 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <Layout>
-          <Ranking />
+          <RequiresPrediction>
+            <Ranking />
+          </RequiresPrediction>
         </Layout>
       </ProtectedRoute>
     ),
@@ -61,7 +64,9 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <Layout>
-          <Community />
+          <RequiresPrediction>
+            <Community />
+          </RequiresPrediction>
         </Layout>
       </ProtectedRoute>
     ),
