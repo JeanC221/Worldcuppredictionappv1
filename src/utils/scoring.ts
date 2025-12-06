@@ -12,6 +12,14 @@ export interface ScoreResult {
   totalPoints: number;
 }
 
+/**
+ * Verifica si un partido tiene resultado oficial (no null, no undefined)
+ */
+function hasResult(match: Match): boolean {
+  return match.score1 !== undefined && match.score1 !== null &&
+         match.score2 !== undefined && match.score2 !== null;
+}
+
 export function calculateScore(
   predictions: { [matchId: string]: { score1: number; score2: number } },
   actualMatches: Match[]
@@ -21,7 +29,8 @@ export function calculateScore(
   let totalPoints = 0;
 
   for (const match of actualMatches) {
-    if (match.score1 === undefined || match.score2 === undefined) {
+    // Solo contar partidos que YA tienen resultado oficial (no null)
+    if (!hasResult(match)) {
       continue;
     }
 
@@ -30,7 +39,7 @@ export function calculateScore(
       continue; 
     }
 
-    const actualWinner = getWinner(match.score1, match.score2);
+    const actualWinner = getWinner(match.score1!, match.score2!);
     const predictedWinner = getWinner(prediction.score1, prediction.score2);
 
     // ¿Marcador exacto?
@@ -43,12 +52,10 @@ export function calculateScore(
       correctWinners++;
       totalPoints += 3;
     }
-    // Falló completamente: 0 puntos
   }
 
   return { exactMatches, correctWinners, totalPoints };
 }
-
 
 function getWinner(score1: number, score2: number): number {
   if (score1 > score2) return 1;

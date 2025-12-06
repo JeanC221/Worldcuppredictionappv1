@@ -295,7 +295,7 @@ export function AdminPanel() {
             </AlertDescription>
           </Alert>
 
-          <Accordion type="multiple" defaultValue={['A']} className="space-y-3">
+          <Accordion type="multiple" defaultValue={[]} className="space-y-3">
             {groups.map((group) => (
               <AccordionItem 
                 key={group} 

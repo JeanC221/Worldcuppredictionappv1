@@ -44,6 +44,21 @@ export function Dashboard() {
           const pollaRef = doc(db, 'polla_completa', user.uid);
           const pollaSnap = await getDoc(pollaRef);
 
+          let submittedAtFormatted: string | undefined;
+          if (pollaSnap.exists()) {
+            const data = pollaSnap.data();
+            // Formatear el timestamp correctamente
+            if (data.submittedAt) {
+              if (data.submittedAt.toDate) {
+                // Es un Timestamp de Firebase
+                submittedAtFormatted = data.submittedAt.toDate().toLocaleDateString('es-ES');
+              } else if (typeof data.submittedAt === 'string') {
+                // Es un string ISO
+                submittedAtFormatted = new Date(data.submittedAt).toLocaleDateString('es-ES');
+              }
+            }
+          }
+
           setUserStats({
             hasPrediction: pollaSnap.exists(),
             totalPoints: 0, 
@@ -51,7 +66,7 @@ export function Dashboard() {
             correctWinners: 0,
             position: 0, 
             userName: user.displayName,
-            submittedAt: pollaSnap.exists() ? pollaSnap.data().submittedAt : undefined
+            submittedAt: submittedAtFormatted
           });
 
           const matchesRef = collection(db, 'partidos');

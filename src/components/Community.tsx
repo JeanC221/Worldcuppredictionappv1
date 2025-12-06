@@ -36,28 +36,35 @@ interface MatchComparisonProps {
   actual?: Match;
 }
 
+// Helper para verificar si un partido tiene resultado oficial
+function hasOfficialResult(match: Match | undefined): boolean {
+  return !!(match && 
+    match.score1 !== undefined && match.score1 !== null &&
+    match.score2 !== undefined && match.score2 !== null);
+}
+
 function MatchComparison({ predicted, actual }: MatchComparisonProps) {
   const getMatchResult = (match: Match): 'win1' | 'win2' | 'draw' | 'pending' => {
-    if (match.score1 === undefined || match.score2 === undefined) return 'pending';
-    if (match.score1 > match.score2) return 'win1';
-    if (match.score2 > match.score1) return 'win2';
+    if (!hasOfficialResult(match)) return 'pending';
+    if (match.score1! > match.score2!) return 'win1';
+    if (match.score2! > match.score1!) return 'win2';
     return 'draw';
   };
 
+  const hasResult = hasOfficialResult(actual);
+
   const isExactMatch =
-    actual &&
-    predicted.score1 === actual.score1 &&
-    predicted.score2 === actual.score2;
+    hasResult &&
+    predicted.score1 === actual!.score1 &&
+    predicted.score2 === actual!.score2;
 
   const isCorrectWinner =
-    actual &&
+    hasResult &&
     !isExactMatch &&
-    getMatchResult(predicted) === getMatchResult(actual);
+    getMatchResult(predicted) === getMatchResult(actual!);
 
   const isIncorrect =
-    actual &&
-    actual.score1 !== undefined &&
-    actual.score2 !== undefined &&
+    hasResult &&
     !isExactMatch &&
     !isCorrectWinner;
 
@@ -78,21 +85,22 @@ function MatchComparison({ predicted, actual }: MatchComparisonProps) {
         {predicted.date}
       </div>
 
-      {actual && actual.score1 !== undefined && actual.score2 !== undefined && (
+      {/* Mostrar resultado real SOLO si existe */}
+      {hasResult && (
         <div className="mb-4 pb-4 border-b border-gray-200">
           <div className="text-xs text-gray-600 mb-2">Resultado Real:</div>
           <div className="grid grid-cols-3 items-center gap-4">
             <div className="text-right">
-              <div className="text-gray-900 text-sm mb-1">{actual.team1}</div>
+              <div className="text-gray-900 text-sm mb-1">{actual!.team1}</div>
               <div className="inline-block px-3 py-1.5 rounded-lg bg-gray-100 border border-gray-300">
-                <span className="text-xl text-gray-900">{actual.score1}</span>
+                <span className="text-xl text-gray-900">{actual!.score1}</span>
               </div>
             </div>
             <div className="text-center text-gray-400 text-sm">vs</div>
             <div className="text-left">
-              <div className="text-gray-900 text-sm mb-1">{actual.team2}</div>
+              <div className="text-gray-900 text-sm mb-1">{actual!.team2}</div>
               <div className="inline-block px-3 py-1.5 rounded-lg bg-gray-100 border border-gray-300">
-                <span className="text-xl text-gray-900">{actual.score2}</span>
+                <span className="text-xl text-gray-900">{actual!.score2}</span>
               </div>
             </div>
           </div>
@@ -138,7 +146,8 @@ function MatchComparison({ predicted, actual }: MatchComparisonProps) {
         </div>
       </div>
 
-      {actual && actual.score1 !== undefined && actual.score2 !== undefined && (
+      {/* Status badge SOLO si hay resultado */}
+      {hasResult && (
         <div className="mt-3 pt-3 border-t border-gray-200">
           {isExactMatch ? (
             <div className="flex items-center gap-2 text-emerald-600 text-sm">
@@ -156,6 +165,16 @@ function MatchComparison({ predicted, actual }: MatchComparisonProps) {
               <span>Incorrecto (0 pts)</span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Si no hay resultado, mostrar "Pendiente" */}
+      {!hasResult && (
+        <div className="mt-3 pt-3 border-t border-gray-200">
+          <div className="flex items-center gap-2 text-gray-400 text-sm">
+            <Calendar className="size-4" />
+            <span>Partido pendiente</span>
+          </div>
         </div>
       )}
     </div>
@@ -381,7 +400,7 @@ export function Community() {
             <div className="mt-4">
               <Accordion
                 type="multiple"
-                defaultValue={Object.keys(getPredictionsByGroup(selectedPrediction.groupPredictions))}
+                defaultValue={[]}  // Cambiar de Object.keys(...) a []
                 className="space-y-3"
               >
                 {Object.entries(getPredictionsByGroup(selectedPrediction.groupPredictions))
@@ -395,12 +414,13 @@ export function Community() {
 
                     predictedMatches.forEach((p) => {
                       const actual = actualGroupMatches.find((a) => a.id === p.id);
-                      if (actual && actual.score1 !== undefined && actual.score2 !== undefined) {
-                        if (p.score1 === actual.score1 && p.score2 === actual.score2) {
+                      // Usar hasOfficialResult en lugar de solo !== undefined
+                      if (hasOfficialResult(actual)) {
+                        if (p.score1 === actual!.score1 && p.score2 === actual!.score2) {
                           exactCount++;
                         } else {
                           const predResult = p.score1! > p.score2! ? 'win1' : p.score1! < p.score2! ? 'win2' : 'draw';
-                          const actualResult = actual.score1 > actual.score2 ? 'win1' : actual.score1 < actual.score2 ? 'win2' : 'draw';
+                          const actualResult = actual!.score1! > actual!.score2! ? 'win1' : actual!.score1! < actual!.score2! ? 'win2' : 'draw';
                           if (predResult === actualResult) {
                             correctCount++;
                           } else {
