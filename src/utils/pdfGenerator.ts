@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { getCountryInfo } from './countryFlags';
+import { SCORING, PHASES, TournamentPhase } from './constants';
 
 interface PollaData {
   userName: string;
@@ -8,7 +8,24 @@ interface PollaData {
   totalPoints: number;
   exactMatches?: number;
   correctWinners?: number;
-  groupPredictions: { [matchId: string]: { score1: number; score2: number } };
+  teamsBonus?: number;
+  // Nuevo sistema de fases
+  groupPredictions?: { [matchId: string]: { score1: number; score2: number } };
+  teamsAdvancing?: string[];
+  phases?: {
+    [key in TournamentPhase]?: {
+      matchPredictions: { [matchId: string]: { score1: number; score2: number } };
+      teamsAdvancing: string[];
+    };
+  };
+  scores?: {
+    [key in TournamentPhase]?: {
+      exactMatches: number;
+      correctWinners: number;
+      teamsAdvancedBonus: number;
+      totalPoints: number;
+    };
+  };
   knockoutPredictions?: any;
   knockoutPicks?: { [key: string]: string };
 }
@@ -19,6 +36,7 @@ interface MatchInfo {
   team2: string;
   group: string;
   date: string;
+  phase?: TournamentPhase;
   score1?: number | null;
   score2?: number | null;
 }
@@ -88,27 +106,33 @@ export async function generatePollaPDF(
   doc.setFillColor(...COLORS.slateLight);
   doc.roundedRect(margin, currentY, pageWidth - margin * 2, statsBoxHeight, 3, 3, 'F');
 
-  const statsWidth = (pageWidth - margin * 2) / 4;
+  const statsWidth = (pageWidth - margin * 2) / 5;
   const stats = [
-    { label: 'PUNTOS', value: pollaData.totalPoints.toString(), color: COLORS.navy },
+    { label: 'PUNTOS', value: pollaData.totalPoints.toString(), color: COLORS.orange },
     { label: 'EXACTOS', value: (pollaData.exactMatches || 0).toString(), color: COLORS.emerald },
     { label: 'GANADOR', value: (pollaData.correctWinners || 0).toString(), color: COLORS.navy },
+    { label: 'EQUIPOS', value: (pollaData.teamsBonus || 0).toString(), color: COLORS.gold },
     { label: 'ENVIADO', value: pollaData.submittedAt, color: COLORS.slate },
   ];
 
   stats.forEach((stat, i) => {
     const x = margin + statsWidth * i + statsWidth / 2;
-    doc.setFontSize(16);
+    doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...stat.color);
     doc.text(stat.value, x, currentY + 10, { align: 'center' });
-    doc.setFontSize(7);
+    doc.setFontSize(6);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...COLORS.slate);
-    doc.text(stat.label, x, currentY + 17, { align: 'center' });
+    doc.text(stat.label, x, currentY + 16, { align: 'center' });
   });
 
   currentY += statsBoxHeight + 8;
+
+  // ===== OBTENER PREDICCIONES =====
+  // Compatibilidad: nuevo sistema (phases) o antiguo (groupPredictions)
+  const groupPredictions = pollaData.phases?.groups?.matchPredictions || pollaData.groupPredictions || {};
+  const teamsAdvancing = pollaData.phases?.groups?.teamsAdvancing || pollaData.teamsAdvancing || [];
 
   // ===== AGRUPAR PARTIDOS POR GRUPO =====
   const matchesMap = new Map<string, MatchInfo>();
@@ -116,7 +140,7 @@ export async function generatePollaPDF(
 
   const predictionsByGroup: { [group: string]: Array<{ match: MatchInfo; pred: { score1: number; score2: number } }> } = {};
   
-  for (const [matchId, pred] of Object.entries(pollaData.groupPredictions)) {
+  for (const [matchId, pred] of Object.entries(groupPredictions)) {
     const match = matchesMap.get(matchId);
     if (match) {
       if (!predictionsByGroup[match.group]) predictionsByGroup[match.group] = [];
@@ -124,7 +148,6 @@ export async function generatePollaPDF(
     }
   }
 
-  // Ordenar grupos
   const groups = Object.keys(predictionsByGroup).sort();
 
   // ===== RENDER GRUPOS =====
@@ -175,11 +198,11 @@ export async function generatePollaPDF(
       if (match.score1 !== null && match.score1 !== undefined) {
         const isExact = pred.score1 === match.score1 && pred.score2 === match.score2;
         if (isExact) {
-          groupPoints += 5;
+          groupPoints += SCORING.EXACT_MATCH;
         } else {
           const predResult = pred.score1 > pred.score2 ? 1 : pred.score1 < pred.score2 ? -1 : 0;
           const actualResult = match.score1! > match.score2! ? 1 : match.score1! < match.score2! ? -1 : 0;
-          if (predResult === actualResult) groupPoints += 3;
+          if (predResult === actualResult) groupPoints += SCORING.CORRECT_WINNER;
         }
       }
     });
@@ -248,11 +271,11 @@ export async function generatePollaPDF(
       if (isExact) {
         doc.setFontSize(6);
         doc.setTextColor(...COLORS.emerald);
-        doc.text('+5', colX + colWidth - 3, groupY + 4);
+        doc.text(`+${SCORING.EXACT_MATCH}`, colX + colWidth - 3, groupY + 4);
       } else if (isCorrectWinner) {
         doc.setFontSize(6);
         doc.setTextColor(...COLORS.navy);
-        doc.text('+3', colX + colWidth - 3, groupY + 4);
+        doc.text(`+${SCORING.CORRECT_WINNER}`, colX + colWidth - 3, groupY + 4);
       }
 
       groupY += 7;
@@ -274,9 +297,50 @@ export async function generatePollaPDF(
 
   currentY = maxColY + 5;
 
+  // ===== EQUIPOS QUE AVANZAN =====
+  if (teamsAdvancing.length > 0) {
+    checkNewPage(25);
+    
+    doc.setFillColor(...COLORS.gold);
+    doc.roundedRect(margin, currentY, pageWidth - margin * 2, 8, 2, 2, 'F');
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...COLORS.white);
+    doc.text(`EQUIPOS QUE AVANZAN (${teamsAdvancing.length})`, margin + 4, currentY + 5.5);
+    
+    currentY += 10;
+    
+    // Mostrar equipos en grid
+    const teamsPerRow = 6;
+    const teamBoxWidth = (pageWidth - margin * 2) / teamsPerRow;
+    
+    teamsAdvancing.forEach((team, index) => {
+      const row = Math.floor(index / teamsPerRow);
+      const col = index % teamsPerRow;
+      const x = margin + col * teamBoxWidth;
+      const y = currentY + row * 8;
+      
+      if (y + 8 > pageHeight - margin) {
+        doc.addPage();
+        currentY = margin;
+      }
+      
+      doc.setFillColor(...COLORS.slateLight);
+      doc.roundedRect(x + 1, y, teamBoxWidth - 2, 7, 1, 1, 'F');
+      doc.setFontSize(7);
+      doc.setTextColor(50, 50, 50);
+      doc.setFont('helvetica', 'normal');
+      const teamShort = team.length > 10 ? team.substring(0, 10) + '.' : team;
+      doc.text(teamShort, x + teamBoxWidth / 2, y + 4.5, { align: 'center' });
+    });
+    
+    const teamRows = Math.ceil(teamsAdvancing.length / teamsPerRow);
+    currentY += teamRows * 8 + 5;
+  }
+
   // ===== CAMPEÓN (si existe) =====
   if (pollaData.knockoutPicks && pollaData.knockoutPicks['F-1']) {
-    checkNewPage(30);
+    checkNewPage(25);
     
     doc.setFillColor(...COLORS.gold);
     doc.roundedRect(margin, currentY, pageWidth - margin * 2, 20, 3, 3, 'F');
@@ -289,7 +353,39 @@ export async function generatePollaPDF(
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.text(pollaData.knockoutPicks['F-1'], pageWidth / 2, currentY + 15, { align: 'center' });
+    
+    currentY += 25;
   }
+
+  // ===== RESUMEN DE PUNTUACIÓN =====
+  checkNewPage(30);
+  
+  doc.setFillColor(...COLORS.navy);
+  doc.roundedRect(margin, currentY, pageWidth - margin * 2, 8, 2, 2, 'F');
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...COLORS.white);
+  doc.text('SISTEMA DE PUNTUACIÓN', margin + 4, currentY + 5.5);
+  
+  currentY += 12;
+  
+  const scoringInfo = [
+    { label: 'Marcador Exacto', value: `+${SCORING.EXACT_MATCH} pts`, color: COLORS.emerald },
+    { label: 'Ganador Correcto', value: `+${SCORING.CORRECT_WINNER} pts`, color: COLORS.navy },
+    { label: 'Equipo que Avanza', value: `+${SCORING.TEAM_ADVANCED} pts`, color: COLORS.gold },
+  ];
+  
+  scoringInfo.forEach((info, i) => {
+    doc.setFillColor(...COLORS.slateLight);
+    doc.roundedRect(margin + i * 60, currentY, 55, 12, 2, 2, 'F');
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...info.color);
+    doc.text(info.value, margin + i * 60 + 27.5, currentY + 5, { align: 'center' });
+    doc.setFontSize(6);
+    doc.setTextColor(...COLORS.slate);
+    doc.text(info.label, margin + i * 60 + 27.5, currentY + 10, { align: 'center' });
+  });
 
   // ===== FOOTER =====
   const totalPages = doc.getNumberOfPages();

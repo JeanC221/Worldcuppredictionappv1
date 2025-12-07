@@ -88,27 +88,17 @@ export function Ranking() {
           }
         }
 
-        // Ordenar: puntos > exactos > ganadores > bonus equipos
-        entries.sort((a, b) => {
-          if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
-          if (b.exactMatches !== a.exactMatches) return b.exactMatches - a.exactMatches;
-          if (b.correctWinners !== a.correctWinners) return b.correctWinners - a.correctWinners;
-          return b.teamsBonus - a.teamsBonus;
-        });
+        // Ordenar: SOLO por puntos totales (sin desempates)
+        entries.sort((a, b) => b.totalPoints - a.totalPoints);
 
-        // Asignar ranking con empates
+        // Asignar ranking con empates (comparten posición)
         entries.forEach((entry, index) => {
           if (index === 0) {
             entry.rank = 1;
           } else {
             const prev = entries[index - 1];
-            if (
-              entry.totalPoints === prev.totalPoints &&
-              entry.exactMatches === prev.exactMatches &&
-              entry.correctWinners === prev.correctWinners &&
-              entry.teamsBonus === prev.teamsBonus
-            ) {
-              entry.rank = prev.rank;
+            if (entry.totalPoints === prev.totalPoints) {
+              entry.rank = prev.rank; // Comparten posición
             } else {
               entry.rank = index + 1;
             }
@@ -374,12 +364,11 @@ export function Ranking() {
             <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
               <Medal className="size-6 text-slate-600" />
             </div>
-            <h3 className="text-slate-900 font-bold mb-1">Desempates</h3>
-            <div className="text-xs text-slate-600 space-y-1">
-              <p>1. Puntos totales</p>
-              <p>2. Marcadores exactos</p>
-              <p>3. Ganadores correctos</p>
-              <p>4. Equipos acertados</p>
+            <h3 className="text-slate-900 font-bold mb-1">Empates</h3>
+            <div className="text-sm text-slate-600 space-y-1">
+              <p className="font-medium text-[#D4A824]">Sin desempates</p>
+              <p>Los empatados comparten posición</p>
+              <p>El premio se divide entre ellos</p>
             </div>
           </CardContent>
         </Card>
