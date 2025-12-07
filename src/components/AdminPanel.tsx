@@ -10,7 +10,7 @@ import { useAdmin } from '../hooks/useAdmin';
 import { 
   Shield, Database, Trophy, Users, RefreshCw, Save, 
   CheckCircle, AlertTriangle, Loader2, ClipboardList, Settings,
-  Trash2, Search, Filter
+  Trash2, Search, Filter, Download 
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -25,6 +25,8 @@ import {
   DialogTitle,
 } from './ui/dialog';
 import { broadcastNotification, createNotification } from '../hooks/useNotifications';
+import { TeamDisplay } from './TeamDisplay';
+import { generatePollaPDF } from '../utils/pdfGenerator';
 
 interface MatchWithScore extends Match {
   status?: string;
@@ -56,6 +58,7 @@ export function AdminPanel() {
   const [deletingUser, setDeletingUser] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [userToDelete, setUserToDelete] = useState<UserPolla | null>(null);
+  const [downloadingUser, setDownloadingUser] = useState<string | null>(null);
   
   // Estados para herramientas
   const [seedingStatus, setSeedingStatus] = useState('');
@@ -324,6 +327,103 @@ export function AdminPanel() {
     }
   };
 
+  const handleDownloadPolla = async (user: UserPolla) => {
+    setDownloadingUser(user.docId);
+    try {
+      const { getDoc, doc: firestoreDoc } = await import('firebase/firestore');
+      const pollaDoc = await getDoc(firestoreDoc(db, 'polla_completa', user.docId));
+      
+      if (!pollaDoc.exists()) {
+        alert('No se encontró la polla');
+        return;
+      }
+
+      const pollaData = pollaDoc.data();
+      
+      // Preparar datos para el PDF
+      const pdfData = {
+        userName: user.userName,
+        email: user.email,
+        submittedAt: user.submittedAt,
+        totalPoints: user.totalPoints,
+        exactMatches: pollaData.exactMatches || 0,
+        correctWinners: pollaData.correctWinners || 0,
+        groupPredictions: pollaData.groupPredictions || {},
+        knockoutPredictions: pollaData.knockoutPredictions || {},
+        knockoutPicks: pollaData.knockoutPicks || {}
+      };
+
+      // Convertir allMatches al formato esperado
+      const matchesInfo = allMatches.map(m => ({
+        id: m.id,
+        team1: m.team1,
+        team2: m.team2,
+        group: m.group,
+        date: m.date,
+        score1: m.score1,
+        score2: m.score2
+      }));
+
+      await generatePollaPDF(pdfData, matchesInfo);
+      
+    } catch (error) {
+      console.error('Error generando PDF:', error);
+      alert('Error al generar PDF');
+    } finally {
+      setDownloadingUser(null);
+    }
+  };
+
+  const handleDownloadAllPollas = async () => {
+    const confirm = window.confirm(
+      `¿Descargar ${users.length} PDFs? Se generará un PDF por cada usuario.`
+    );
+    if (!confirm) return;
+
+    try {
+      const pollasSnap = await getDocs(collection(db, 'polla_completa'));
+      
+      const matchesInfo = allMatches.map(m => ({
+        id: m.id,
+        team1: m.team1,
+        team2: m.team2,
+        group: m.group,
+        date: m.date,
+        score1: m.score1,
+        score2: m.score2
+      }));
+
+      let count = 0;
+      for (const docSnap of pollasSnap.docs) {
+        const data = docSnap.data();
+        
+        const pdfData = {
+          userName: data.userName || 'Sin nombre',
+          email: data.userEmail || '',
+          submittedAt: data.submittedAt?.toDate?.()?.toLocaleDateString('es-ES') || 'N/A',
+          totalPoints: data.totalPoints || 0,
+          exactMatches: data.exactMatches || 0,
+          correctWinners: data.correctWinners || 0,
+          groupPredictions: data.groupPredictions || {},
+          knockoutPredictions: data.knockoutPredictions || {},
+          knockoutPicks: data.knockoutPicks || {}
+        };
+
+        await generatePollaPDF(pdfData, matchesInfo);
+        count++;
+        
+        // Pequeña pausa entre descargas
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      alert(`${count} PDFs generados exitosamente`);
+      
+    } catch (error) {
+      console.error('Error generando PDFs:', error);
+      alert('Error al generar PDFs');
+    }
+  };
+
   if (adminLoading || dataLoading) {
     return (
       <div className="flex h-[400px] items-center justify-center">
@@ -502,47 +602,43 @@ export function AdminPanel() {
                       
                       {/* Equipos y scores */}
                       <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
-                        <span className="text-sm font-medium text-right truncate flex-1 max-w-[120px]">
-                          {match.team1}
-                        </span>
+                        <TeamDisplay team={match.team1} reverse className="flex-1 justify-end text-sm font-medium text-slate-700" flagSize="sm" />
                         
-                        <Input
-                          type="number"
-                          min="0"
-                          max="20"
-                          className="w-12 h-9 text-center font-bold rounded-lg border-2 text-sm"
-                          value={currentScore1}
-                          placeholder="-"
-                          onChange={(e) => setEditedScores(prev => ({
-                            ...prev,
-                            [match.id]: { 
-                              score1: e.target.value, 
-                              score2: prev[match.id]?.score2 ?? match.score2?.toString() ?? '' 
-                            }
-                          }))}
-                        />
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={2}
+                            value={currentScore1}
+                            onChange={(e) => setEditedScores(prev => ({
+                              ...prev,
+                              [match.id]: { 
+                                score1: e.target.value, 
+                                score2: prev[match.id]?.score2 ?? match.score2?.toString() ?? '' 
+                              }
+                            }))}
+                            className="w-12 h-9 text-center font-bold rounded-lg border-2"
+                            placeholder="-"
+                          />
+                          <span className="text-slate-400 font-medium">-</span>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={2}
+                            value={currentScore2}
+                            onChange={(e) => setEditedScores(prev => ({
+                              ...prev,
+                              [match.id]: { 
+                                score1: prev[match.id]?.score1 ?? match.score1?.toString() ?? '', 
+                                score2: e.target.value 
+                              }
+                            }))}
+                            className="w-12 h-9 text-center font-bold rounded-lg border-2"
+                            placeholder="-"
+                          />
+                        </div>
                         
-                        <span className="text-slate-300 text-xs">-</span>
-                        
-                        <Input
-                          type="number"
-                          min="0"
-                          max="20"
-                          className="w-12 h-9 text-center font-bold rounded-lg border-2 text-sm"
-                          value={currentScore2}
-                          placeholder="-"
-                          onChange={(e) => setEditedScores(prev => ({
-                            ...prev,
-                            [match.id]: { 
-                              score1: prev[match.id]?.score1 ?? match.score1?.toString() ?? '', 
-                              score2: e.target.value 
-                            }
-                          }))}
-                        />
-                        
-                        <span className="text-sm font-medium text-left truncate flex-1 max-w-[120px]">
-                          {match.team2}
-                        </span>
+                        <TeamDisplay team={match.team2} className="flex-1 justify-start text-sm font-medium text-slate-700" flagSize="sm" />
                       </div>
                       
                       {/* Botón guardar */}
@@ -580,14 +676,27 @@ export function AdminPanel() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <CardTitle className="text-lg">Usuarios con Polla ({users.length})</CardTitle>
                 
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                  <Input
-                    placeholder="Buscar usuario..."
-                    value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
-                    className="pl-10 w-64 rounded-xl"
-                  />
+                <div className="flex items-center gap-3">
+                  {/* Download All Button */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDownloadAllPollas}
+                    className="h-9 rounded-xl border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#1E3A5F]/5"
+                  >
+                    <Download className="size-4 mr-2" />
+                    Descargar Todas
+                  </Button>
+                  
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                    <Input
+                      placeholder="Buscar usuario..."
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      className="pl-10 w-64 rounded-xl"
+                    />
+                  </div>
                 </div>
               </div>
             </CardHeader>
@@ -624,17 +733,35 @@ export function AdminPanel() {
                       </div>
                       
                       {/* Acciones */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 w-8 p-0 rounded-lg border-red-200 text-red-500 hover:bg-red-50 hover:border-red-300"
-                        onClick={() => {
-                          setUserToDelete(user);
-                          setShowDeleteDialog(true);
-                        }}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {/* Download Button */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 rounded-lg border-[#1E3A5F]/30 text-[#1E3A5F] hover:bg-[#1E3A5F]/10"
+                          onClick={() => handleDownloadPolla(user)}
+                          disabled={downloadingUser === user.docId}
+                        >
+                          {downloadingUser === user.docId ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Download className="size-4" />
+                          )}
+                        </Button>
+                        
+                        {/* Delete Button */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 rounded-lg border-red-200 text-red-500 hover:bg-red-50 hover:border-red-300"
+                          onClick={() => {
+                            setUserToDelete(user);
+                            setShowDeleteDialog(true);
+                          }}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))
                 )}

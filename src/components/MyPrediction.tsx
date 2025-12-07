@@ -5,14 +5,9 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { Match } from '../utils/types';
 import { CheckCircle2, XCircle, Calendar, Trophy, TrendingUp, Loader2, ClipboardList } from 'lucide-react';
 import { PredictionForm } from './PredictionForm';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from './ui/accordion';
 import { Alert, AlertDescription } from './ui/alert';
 import { Card, CardContent } from './ui/card';
+import { TeamDisplay } from './TeamDisplay';
 
 interface MatchComparisonProps {
   predicted: Match;
@@ -35,131 +30,64 @@ function MatchComparison({ predicted, actual }: MatchComparisonProps) {
   };
 
   const hasResult = hasOfficialResult(actual);
-
-  const isExactMatch =
-    hasResult &&
-    predicted.score1 === actual!.score1 &&
-    predicted.score2 === actual!.score2;
-
-  const isCorrectWinner =
-    hasResult &&
-    !isExactMatch &&
-    getMatchResult(predicted) === getMatchResult(actual!);
-
-  const isIncorrect =
-    hasResult &&
-    !isExactMatch &&
-    !isCorrectWinner;
+  const isExactMatch = hasResult && predicted.score1 === actual!.score1 && predicted.score2 === actual!.score2;
+  const isCorrectWinner = hasResult && !isExactMatch && getMatchResult(predicted) === getMatchResult(actual!);
+  const isIncorrect = hasResult && !isExactMatch && !isCorrectWinner;
 
   return (
-    <div
-      className={`border-2 rounded-2xl p-4 transition-all ${
-        isExactMatch
-          ? 'bg-emerald-50 border-emerald-300 shadow-sm'
-          : isCorrectWinner
-          ? 'bg-[#1E3A5F]/5 border-[#1E3A5F]/30 shadow-sm'
-          : isIncorrect
-          ? 'bg-red-50 border-red-300 shadow-sm'
-          : 'bg-white border-slate-200 hover:border-slate-300'
-      }`}
-    >
-      <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
-        <Calendar className="size-3" />
-        {predicted.date}
+    <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+      isExactMatch ? 'bg-emerald-50 border-2 border-emerald-300' :
+      isCorrectWinner ? 'bg-[#1E3A5F]/5 border-2 border-[#1E3A5F]/30' :
+      isIncorrect ? 'bg-red-50 border-2 border-red-300' :
+      'bg-slate-50 border-2 border-slate-200'
+    }`}>
+      {/* Equipo 1 */}
+      <div className="flex-1 flex items-center justify-end gap-2">
+        <TeamDisplay team={predicted.team1} reverse className="text-slate-800 text-sm font-medium" flagSize="md" />
       </div>
 
-      {/* Mostrar resultado real SOLO si existe */}
-      {hasResult && (
-        <div className="mb-4 pb-4 border-b border-slate-200">
-          <div className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wide">Resultado Real</div>
-          <div className="grid grid-cols-3 items-center gap-4">
-            <div className="text-right">
-              <div className="text-slate-900 text-sm mb-1 font-medium">{actual!.team1}</div>
-              <div className="inline-block px-3 py-1.5 rounded-xl bg-slate-100 border-2 border-slate-200">
-                <span className="text-xl font-bold text-slate-900">{actual!.score1}</span>
-              </div>
-            </div>
-            <div className="text-center text-slate-400 text-sm font-medium">vs</div>
-            <div className="text-left">
-              <div className="text-slate-900 text-sm mb-1 font-medium">{actual!.team2}</div>
-              <div className="inline-block px-3 py-1.5 rounded-xl bg-slate-100 border-2 border-slate-200">
-                <span className="text-xl font-bold text-slate-900">{actual!.score2}</span>
-              </div>
-            </div>
+      {/* Scores */}
+      <div className="flex flex-col items-center gap-1">
+        {/* Resultado Real */}
+        {hasResult && (
+          <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-200 rounded text-xs">
+            <span className="font-bold text-slate-600 w-3 text-center">{actual!.score1}</span>
+            <span className="text-slate-400">-</span>
+            <span className="font-bold text-slate-600 w-3 text-center">{actual!.score2}</span>
           </div>
-        </div>
-      )}
-
-      <div>
-        <div className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wide">Tu Predicción</div>
-        <div className="grid grid-cols-3 items-center gap-4">
-          <div className="text-right">
-            <div className="text-slate-900 text-sm mb-1 font-medium">{predicted.team1}</div>
-            <div
-              className={`inline-block px-3 py-1.5 rounded-xl border-2 transition-colors ${
-                isExactMatch
-                  ? 'bg-emerald-500 border-emerald-600 text-white'
-                  : isCorrectWinner
-                  ? 'bg-[#1E3A5F] border-[#1E3A5F] text-white'
-                  : isIncorrect
-                  ? 'bg-red-500 border-red-600 text-white'
-                  : 'bg-white border-slate-300 text-slate-900'
-              }`}
-            >
-              <span className="text-xl font-bold">{predicted.score1}</span>
-            </div>
-          </div>
-          <div className="text-center text-slate-400 text-sm font-medium">vs</div>
-          <div className="text-left">
-            <div className="text-slate-900 text-sm mb-1 font-medium">{predicted.team2}</div>
-            <div
-              className={`inline-block px-3 py-1.5 rounded-xl border-2 transition-colors ${
-                isExactMatch
-                  ? 'bg-emerald-500 border-emerald-600 text-white'
-                  : isCorrectWinner
-                  ? 'bg-[#1E3A5F] border-[#1E3A5F] text-white'
-                  : isIncorrect
-                  ? 'bg-red-500 border-red-600 text-white'
-                  : 'bg-white border-slate-300 text-slate-900'
-              }`}
-            >
-              <span className="text-xl font-bold">{predicted.score2}</span>
-            </div>
-          </div>
+        )}
+        {/* Predicción */}
+        <div className={`flex items-center gap-1 px-3 py-1.5 rounded-lg ${
+          isExactMatch ? 'bg-emerald-500 text-white' :
+          isCorrectWinner ? 'bg-[#1E3A5F] text-white' :
+          isIncorrect ? 'bg-red-500 text-white' :
+          'bg-white border-2 border-slate-300 text-slate-900'
+        }`}>
+          <span className="font-bold text-lg w-4 text-center">{predicted.score1}</span>
+          <span className="opacity-60">-</span>
+          <span className="font-bold text-lg w-4 text-center">{predicted.score2}</span>
         </div>
       </div>
 
-      {/* Status badge SOLO si hay resultado */}
-      {hasResult && (
-        <div className="mt-4 pt-3 border-t border-slate-200">
-          {isExactMatch ? (
-            <div className="inline-flex items-center gap-2 text-emerald-700 text-sm font-semibold bg-emerald-100 px-3 py-1.5 rounded-lg">
-              <CheckCircle2 className="size-4" />
-              <span>Marcador Exacto (+5 pts)</span>
-            </div>
+      {/* Equipo 2 */}
+      <div className="flex-1 flex items-center justify-start gap-2">
+        <TeamDisplay team={predicted.team2} className="text-slate-800 text-sm font-medium" flagSize="md" />
+      </div>
+
+      {/* Badge */}
+      <div className="w-16 text-right">
+        {hasResult ? (
+          isExactMatch ? (
+            <span className="text-emerald-600 text-xs font-bold">+5</span>
           ) : isCorrectWinner ? (
-            <div className="inline-flex items-center gap-2 text-[#1E3A5F] text-sm font-semibold bg-[#1E3A5F]/10 px-3 py-1.5 rounded-lg">
-              <CheckCircle2 className="size-4" />
-              <span>Ganador Correcto (+3 pts)</span>
-            </div>
+            <span className="text-[#1E3A5F] text-xs font-bold">+3</span>
           ) : (
-            <div className="inline-flex items-center gap-2 text-red-700 text-sm font-semibold bg-red-100 px-3 py-1.5 rounded-lg">
-              <XCircle className="size-4" />
-              <span>Incorrecto (0 pts)</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Si no hay resultado, mostrar "Pendiente" */}
-      {!hasResult && (
-        <div className="mt-4 pt-3 border-t border-slate-200">
-          <div className="inline-flex items-center gap-2 text-slate-500 text-sm bg-slate-100 px-3 py-1.5 rounded-lg">
-            <Calendar className="size-4" />
-            <span>Partido pendiente</span>
-          </div>
-        </div>
-      )}
+            <span className="text-red-500 text-xs font-bold">0</span>
+          )
+        ) : (
+          <span className="text-slate-400 text-xs">Pendiente</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -169,11 +97,11 @@ export function MyPrediction() {
   const [userPrediction, setUserPrediction] = useState<any>(null);
   const [actualMatchesMap, setActualMatchesMap] = useState<{ [key: string]: Match }>({});
   const [predictionsByGroup, setPredictionsByGroup] = useState<{ [group: string]: Match[] }>({});
+  const [selectedGroup, setSelectedGroup] = useState<string>('A');
 
   useEffect(() => {
     const fetchData = async (uid: string) => {
       try {
-        // 1. Obtener los partidos oficiales
         const querySnapshot = await getDocs(collection(db, 'partidos'));
         const matchesMap: { [key: string]: Match } = {};
         querySnapshot.forEach((docSnap) => {
@@ -181,7 +109,6 @@ export function MyPrediction() {
         });
         setActualMatchesMap(matchesMap);
 
-        // 2. Obtener la predicción del usuario
         const docRef = doc(db, 'polla_completa', uid);
         const docSnap = await getDoc(docRef);
 
@@ -189,7 +116,6 @@ export function MyPrediction() {
           const data = docSnap.data();
           setUserPrediction(data);
 
-          // 3. Convertir predicciones a formato agrupado por grupo
           const grouped: { [group: string]: Match[] } = {};
           const predictions = data.groupPredictions || {};
 
@@ -208,7 +134,6 @@ export function MyPrediction() {
             }
           }
 
-          // Ordenar partidos dentro de cada grupo por fecha
           Object.keys(grouped).forEach(g => {
             grouped[g].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
           });
@@ -244,220 +169,217 @@ export function MyPrediction() {
     );
   }
 
-  // Si no hay predicción guardada, mostramos el formulario
   if (!userPrediction) {
     return <PredictionForm />;
   }
 
   const groups = Object.keys(predictionsByGroup).sort();
 
-  // Calcular estadísticas (SOLO partidos con resultado)
-  let totalExact = 0;
-  let totalCorrectWinner = 0;
-  let totalIncorrect = 0;
-
+  // Estadísticas totales
+  let totalExact = 0, totalCorrectWinner = 0, totalIncorrect = 0;
   groups.forEach((groupId) => {
     predictionsByGroup[groupId].forEach((predicted) => {
       const actual = actualMatchesMap[predicted.id];
       if (hasOfficialResult(actual)) {
-        if (predicted.score1 === actual.score1 && predicted.score2 === actual.score2) {
-          totalExact++;
-        } else {
+        if (predicted.score1 === actual.score1 && predicted.score2 === actual.score2) totalExact++;
+        else {
           const predResult = predicted.score1! > predicted.score2! ? 1 : predicted.score1! < predicted.score2! ? -1 : 0;
           const actualResult = actual.score1! > actual.score2! ? 1 : actual.score1! < actual.score2! ? -1 : 0;
-          if (predResult === actualResult) {
-            totalCorrectWinner++;
-          } else {
-            totalIncorrect++;
-          }
+          if (predResult === actualResult) totalCorrectWinner++;
+          else totalIncorrect++;
         }
       }
     });
   });
-
   const totalPoints = totalExact * 5 + totalCorrectWinner * 3;
 
-  // Formatear fecha de envío
+  // Stats por grupo
+  const getGroupStats = (groupId: string) => {
+    let exact = 0, correct = 0, incorrect = 0;
+    predictionsByGroup[groupId]?.forEach((p) => {
+      const actual = actualMatchesMap[p.id];
+      if (hasOfficialResult(actual)) {
+        if (p.score1 === actual.score1 && p.score2 === actual.score2) exact++;
+        else {
+          const predResult = p.score1! > p.score2! ? 1 : p.score1! < p.score2! ? -1 : 0;
+          const actualResult = actual.score1! > actual.score2! ? 1 : actual.score1! < actual.score2! ? -1 : 0;
+          if (predResult === actualResult) correct++;
+          else incorrect++;
+        }
+      }
+    });
+    return { exact, correct, incorrect, points: exact * 5 + correct * 3 };
+  };
+
   const formatSubmittedAt = () => {
     if (!userPrediction.submittedAt) return 'N/A';
     if (userPrediction.submittedAt.toDate) {
-      return userPrediction.submittedAt.toDate().toLocaleDateString('es-ES', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric'
-      });
+      return userPrediction.submittedAt.toDate().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
     }
-    return new Date(userPrediction.submittedAt).toLocaleDateString('es-ES', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
+    return new Date(userPrediction.submittedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
   };
+
+  const currentGroupStats = getGroupStats(selectedGroup);
+  const currentPredictions = predictionsByGroup[selectedGroup] || [];
 
   return (
     <div className="max-w-5xl mx-auto pb-10">
       {/* Header */}
-      <div className="mb-8 flex items-center gap-4">
-        <div className="w-16 h-16 bg-gradient-to-br from-[#D4A824] to-[#B8941E] rounded-2xl flex items-center justify-center shadow-lg">
-          <ClipboardList className="size-8 text-white" />
+      <div className="mb-6 flex items-center gap-4">
+        <div className="w-14 h-14 bg-gradient-to-br from-[#D4A824] to-[#B8941E] rounded-2xl flex items-center justify-center shadow-lg">
+          <ClipboardList className="size-7 text-white" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Mi Predicción</h1>
-          <p className="text-slate-500 mt-1">Revisa tus predicciones y compáralas con los resultados reales</p>
+          <h1 className="text-2xl font-bold text-slate-900">Mi Predicción</h1>
+          <p className="text-slate-500 text-sm">Compara tus predicciones con los resultados</p>
         </div>
       </div>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white rounded-2xl overflow-hidden">
-          <CardContent className="p-5 md:p-6">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-3">
-              <TrendingUp className="size-6" />
-            </div>
-            <div className="text-3xl md:text-4xl mb-1 font-bold">{totalPoints}</div>
-            <div className="text-sm opacity-80">Puntos Totales</div>
+      {/* Stats Summary - Compacto */}
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        <Card className="border-0 shadow-md bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white rounded-xl">
+          <CardContent className="p-3 text-center">
+            <TrendingUp className="size-5 mx-auto mb-1 opacity-80" />
+            <div className="text-2xl font-bold">{totalPoints}</div>
+            <div className="text-[10px] opacity-70 uppercase">Puntos</div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-md bg-white rounded-2xl overflow-hidden">
-          <CardContent className="p-5 md:p-6">
-            <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-3">
-              <CheckCircle2 className="size-6 text-emerald-600" />
-            </div>
-            <div className="text-3xl md:text-4xl text-emerald-600 mb-1 font-bold">{totalExact}</div>
-            <div className="text-sm text-slate-500">Exactos (+5)</div>
+        <Card className="border-0 shadow-md bg-white rounded-xl">
+          <CardContent className="p-3 text-center">
+            <CheckCircle2 className="size-5 mx-auto mb-1 text-emerald-500" />
+            <div className="text-2xl font-bold text-emerald-600">{totalExact}</div>
+            <div className="text-[10px] text-slate-500 uppercase">Exactos</div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-md bg-white rounded-2xl overflow-hidden">
-          <CardContent className="p-5 md:p-6">
-            <div className="w-12 h-12 bg-[#1E3A5F]/10 rounded-xl flex items-center justify-center mb-3">
-              <CheckCircle2 className="size-6 text-[#1E3A5F]" />
-            </div>
-            <div className="text-3xl md:text-4xl text-[#1E3A5F] mb-1 font-bold">{totalCorrectWinner}</div>
-            <div className="text-sm text-slate-500">Ganadores (+3)</div>
+        <Card className="border-0 shadow-md bg-white rounded-xl">
+          <CardContent className="p-3 text-center">
+            <CheckCircle2 className="size-5 mx-auto mb-1 text-[#1E3A5F]" />
+            <div className="text-2xl font-bold text-[#1E3A5F]">{totalCorrectWinner}</div>
+            <div className="text-[10px] text-slate-500 uppercase">Ganador</div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-md bg-white rounded-2xl overflow-hidden">
-          <CardContent className="p-5 md:p-6">
-            <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-3">
-              <XCircle className="size-6 text-red-500" />
-            </div>
-            <div className="text-3xl md:text-4xl text-red-500 mb-1 font-bold">{totalIncorrect}</div>
-            <div className="text-sm text-slate-500">Incorrectos</div>
+        <Card className="border-0 shadow-md bg-white rounded-xl">
+          <CardContent className="p-3 text-center">
+            <XCircle className="size-5 mx-auto mb-1 text-red-500" />
+            <div className="text-2xl font-bold text-red-500">{totalIncorrect}</div>
+            <div className="text-[10px] text-slate-500 uppercase">Fallos</div>
           </CardContent>
         </Card>
       </div>
 
       {/* User Info */}
-      <Alert className="mb-8 border-2 border-[#1E3A5F]/20 bg-[#1E3A5F]/5 rounded-2xl">
-        <Trophy className="size-5 text-[#D4A824]" />
-        <AlertDescription className="text-[#1E3A5F] ml-2">
-          Predicción de <span className="font-bold">{userPrediction.userName}</span> — Enviada el {formatSubmittedAt()}
+      <Alert className="mb-6 border-2 border-[#1E3A5F]/20 bg-[#1E3A5F]/5 rounded-xl py-3">
+        <Trophy className="size-4 text-[#D4A824]" />
+        <AlertDescription className="text-[#1E3A5F] text-sm ml-2">
+          <span className="font-bold">{userPrediction.userName}</span> — {formatSubmittedAt()}
         </AlertDescription>
       </Alert>
 
-      {/* Groups Accordion */}
+      {/* Selector de Grupos - 12 cuadrados */}
       <div className="mb-6">
-        <h2 className="text-xl font-bold text-slate-900 mb-4">Fase de Grupos</h2>
-        <Accordion type="multiple" defaultValue={[]} className="space-y-3">
-          {groups.map((groupId) => {
-            const predictions = predictionsByGroup[groupId];
+        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Fase de Grupos</h2>
+        <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
+          {groups.map(g => {
+            const stats = getGroupStats(g);
+            const isSelected = selectedGroup === g;
+            const hasPoints = stats.points > 0;
             
-            let exactCount = 0;
-            let correctCount = 0;
-            let incorrectCount = 0;
-
-            predictions.forEach((p) => {
-              const actual = actualMatchesMap[p.id];
-              if (hasOfficialResult(actual)) {
-                if (p.score1 === actual.score1 && p.score2 === actual.score2) {
-                  exactCount++;
-                } else {
-                  const predResult = p.score1! > p.score2! ? 1 : p.score1! < p.score2! ? -1 : 0;
-                  const actualResult = actual.score1! > actual.score2! ? 1 : actual.score1! < actual.score2! ? -1 : 0;
-                  if (predResult === actualResult) {
-                    correctCount++;
-                  } else {
-                    incorrectCount++;
-                  }
-                }
-              }
-            });
-
             return (
-              <AccordionItem
-                key={groupId}
-                value={groupId}
-                className="border-2 border-slate-200 rounded-2xl bg-white px-5 shadow-sm hover:shadow-md transition-shadow"
+              <button
+                key={g}
+                onClick={() => setSelectedGroup(g)}
+                className={`relative aspect-square rounded-xl font-bold text-lg transition-all ${
+                  isSelected 
+                    ? 'bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white shadow-lg scale-105' 
+                    : 'bg-white text-slate-700 border-2 border-slate-200 hover:border-[#1E3A5F] hover:shadow-md'
+                }`}
               >
-                <AccordionTrigger className="hover:no-underline py-5">
-                  <div className="flex items-center justify-between w-full pr-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] rounded-xl flex items-center justify-center shadow-md">
-                        <span className="text-white font-bold text-lg">{groupId}</span>
-                      </div>
-                      <span className="text-slate-900 font-semibold text-lg">Grupo {groupId}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {exactCount > 0 && (
-                        <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg text-sm font-medium">
-                          <CheckCircle2 className="size-4" />
-                          <span>{exactCount}</span>
-                        </div>
-                      )}
-                      {correctCount > 0 && (
-                        <div className="flex items-center gap-1.5 text-[#1E3A5F] bg-[#1E3A5F]/10 px-3 py-1.5 rounded-lg text-sm font-medium">
-                          <CheckCircle2 className="size-4" />
-                          <span>{correctCount}</span>
-                        </div>
-                      )}
-                      {incorrectCount > 0 && (
-                        <div className="flex items-center gap-1.5 text-red-700 bg-red-100 px-3 py-1.5 rounded-lg text-sm font-medium">
-                          <XCircle className="size-4" />
-                          <span>{incorrectCount}</span>
-                        </div>
-                      )}
-                    </div>
+                {g}
+                {/* Indicador de puntos */}
+                {hasPoints && !isSelected && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {stats.points}
+                  </span>
+                )}
+                {/* Indicadores de resultados */}
+                {isSelected && (
+                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
+                    {stats.exact > 0 && <span className="w-2 h-2 bg-emerald-400 rounded-full" />}
+                    {stats.correct > 0 && <span className="w-2 h-2 bg-white/60 rounded-full" />}
+                    {stats.incorrect > 0 && <span className="w-2 h-2 bg-red-400 rounded-full" />}
                   </div>
-                </AccordionTrigger>
-                <AccordionContent className="pt-2 pb-5">
-                  <div className="space-y-3">
-                    {predictions.map((predicted) => {
-                      const actual = actualMatchesMap[predicted.id];
-                      return (
-                        <MatchComparison
-                          key={predicted.id}
-                          predicted={predicted}
-                          actual={actual}
-                        />
-                      );
-                    })}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+                )}
+              </button>
             );
           })}
-        </Accordion>
+        </div>
       </div>
+
+      {/* Fixture del grupo seleccionado */}
+      <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+        {/* Header del grupo */}
+        <div className="bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-xl">{selectedGroup}</span>
+            </div>
+            <div>
+              <h3 className="text-white font-bold text-lg">Grupo {selectedGroup}</h3>
+              <p className="text-white/70 text-sm">{currentPredictions.length} partidos</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {currentGroupStats.exact > 0 && (
+              <div className="flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-1.5 rounded-lg">
+                <CheckCircle2 className="size-4" />
+                <span className="font-bold text-sm">{currentGroupStats.exact}</span>
+              </div>
+            )}
+            {currentGroupStats.correct > 0 && (
+              <div className="flex items-center gap-1.5 bg-white/20 text-white px-3 py-1.5 rounded-lg">
+                <CheckCircle2 className="size-4" />
+                <span className="font-bold text-sm">{currentGroupStats.correct}</span>
+              </div>
+            )}
+            {currentGroupStats.incorrect > 0 && (
+              <div className="flex items-center gap-1.5 bg-red-500 text-white px-3 py-1.5 rounded-lg">
+                <XCircle className="size-4" />
+                <span className="font-bold text-sm">{currentGroupStats.incorrect}</span>
+              </div>
+            )}
+            <div className="ml-2 bg-[#D4A824] text-white px-3 py-1.5 rounded-lg">
+              <span className="font-bold text-sm">{currentGroupStats.points} pts</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Lista de partidos */}
+        <CardContent className="p-4 space-y-2">
+          {currentPredictions.map((predicted) => (
+            <MatchComparison
+              key={predicted.id}
+              predicted={predicted}
+              actual={actualMatchesMap[predicted.id]}
+            />
+          ))}
+        </CardContent>
+      </Card>
 
       {/* Knockout Picks */}
       {userPrediction.knockoutPicks && Object.keys(userPrediction.knockoutPicks).length > 0 && (
-        <div className="mt-10">
-          <h2 className="text-xl font-bold text-slate-900 mb-4">Fase Final</h2>
-          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden bg-gradient-to-br from-slate-50 to-white">
-            <CardContent className="p-8">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {userPrediction.knockoutPicks['F-1'] && (
-                  <div className="col-span-2 md:col-span-4 text-center">
-                    <div className="text-sm text-slate-500 mb-4 font-medium uppercase tracking-wide">Tu Campeón</div>
-                    <div className="inline-flex items-center gap-4 bg-gradient-to-r from-[#D4A824] via-[#E8C547] to-[#D4A824] text-white px-10 py-5 rounded-2xl font-bold text-2xl shadow-xl border-2 border-[#B8941E]">
-                      <Trophy className="size-8" />
-                      <span className="drop-shadow-sm">
-                        {userPrediction.knockoutPicks['F-1']}
-                      </span>
-                    </div>
+        <div className="mt-8">
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Fase Final</h2>
+          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+            <CardContent className="p-6 text-center">
+              {userPrediction.knockoutPicks['F-1'] && (
+                <>
+                  <div className="text-xs text-slate-400 mb-3 uppercase tracking-wide">Tu Campeón</div>
+                  <div className="inline-flex items-center gap-3 bg-gradient-to-r from-[#D4A824] via-[#E8C547] to-[#D4A824] text-white px-8 py-4 rounded-2xl font-bold text-xl shadow-xl">
+                    <Trophy className="size-7" />
+                    <TeamDisplay team={userPrediction.knockoutPicks['F-1']} flagSize="lg" />
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

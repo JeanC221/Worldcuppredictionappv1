@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Link } from 'react-router-dom';
 import { broadcastNotification } from '../hooks/useNotifications';
+import { TeamDisplay } from './TeamDisplay';
 
 const DEADLINE = new Date('2026-06-10T23:59:59');
 
@@ -348,7 +349,7 @@ export function PredictionForm() {
                   <AccordionContent>
                     {predictions[g]?.map(m => (
                       <div key={m.id} className="flex justify-between items-center py-3 border-b border-slate-100 last:border-0">
-                        <span className="w-1/3 text-right text-sm truncate pr-3 font-medium text-slate-700">{m.team1}</span>
+                        <TeamDisplay team={m.team1} reverse className="w-1/3 justify-end text-sm pr-3 font-medium text-slate-700" flagSize="sm" />
                         <div className="flex gap-2 mx-2">
                           <input 
                             type="text"
@@ -372,7 +373,7 @@ export function PredictionForm() {
                             placeholder="-"
                           />
                         </div>
-                        <span className="w-1/3 text-left text-sm truncate pl-3 font-medium text-slate-700">{m.team2}</span>
+                        <TeamDisplay team={m.team2} className="w-1/3 justify-start text-sm pl-3 font-medium text-slate-700" flagSize="sm" />
                       </div>
                     ))}
                   </AccordionContent>
@@ -432,7 +433,7 @@ export function PredictionForm() {
                             : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-2 border-slate-200'
                         }`}
                       >
-                        <span className="truncate">{t}</span>
+                        <TeamDisplay team={t} className="truncate" flagSize="sm" />
                         {knockoutPicks[m.id] === t && <CheckCircle className="w-4 h-4 flex-shrink-0"/>}
                       </button>
                     ))}

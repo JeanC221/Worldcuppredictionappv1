@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useHasPrediction } from '../hooks/useHasPrediction';
+import { useAdmin } from '../hooks/useAdmin';
 import { Trophy, ClipboardList, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
@@ -10,13 +11,19 @@ interface RequiresPredictionProps {
 
 export function RequiresPrediction({ children }: RequiresPredictionProps) {
   const { hasPrediction, loading } = useHasPrediction();
+  const { isAdmin, loading: adminLoading } = useAdmin();
 
-  if (loading) {
+  if (loading || adminLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="size-8 animate-spin text-[#1E3A5F]" />
       </div>
     );
+  }
+
+  // Admin siempre tiene acceso
+  if (isAdmin) {
+    return <>{children}</>;
   }
 
   if (!hasPrediction) {
@@ -50,19 +57,12 @@ export function RequiresPrediction({ children }: RequiresPredictionProps) {
                 </div>
               </div>
               
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <Link to="/prediccion" className="flex-1">
-                  <Button className="w-full bg-[#E85D24] hover:bg-[#D54D14] text-white font-bold h-12 text-base rounded-xl shadow-lg">
-                    <ClipboardList className="size-5 mr-2" />
-                    Llenar Predicciones
-                  </Button>
-                </Link>
-                <Link to="/instrucciones" className="flex-1">
-                  <Button variant="outline" className="w-full h-12 text-base rounded-xl border-2 border-slate-200">
-                    Ver Instrucciones
-                  </Button>
-                </Link>
-              </div>
+              <Link to="/prediccion" className="block">
+                <Button className="w-full h-14 bg-gradient-to-r from-[#E85D24] to-[#C44D1A] hover:from-[#C44D1A] hover:to-[#A43D10] text-white rounded-xl text-lg font-semibold shadow-lg">
+                  <ClipboardList className="size-5 mr-2" />
+                  Llenar mi Polla
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

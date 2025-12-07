@@ -39,9 +39,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { path: '/instrucciones', label: 'Instrucciones', icon: BookOpen, requiresPrediction: false },
   ];
 
-  // Filtrar items según si tiene predicción
+  // Filtrar items según si tiene predicción O es admin
   const navItems = allNavItems.filter(item => 
-    !item.requiresPrediction || hasPrediction
+    !item.requiresPrediction || hasPrediction || isAdmin
   );
 
   return (
