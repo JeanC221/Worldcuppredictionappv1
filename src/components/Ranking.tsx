@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { Trophy, Medal, Award, Crown, Loader2, BarChart3 } from 'lucide-react';
+import { Trophy, Medal, Award, Crown, Loader2, BarChart3, Users } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -11,8 +11,9 @@ import {
   TableRow,
 } from './ui/table';
 import { Card, CardContent } from './ui/card';
-import { calculateScore, ScoreResult } from '../utils/scoring';
-import { Match } from '../utils/types';
+import { calculateScore, calculateTotalScore, ScoreResult } from '../utils/scoring';
+import { Match, PhaseScore } from '../utils/types';
+import { TournamentPhase, PHASES, SCORING } from '../utils/constants';
 
 interface RankingEntry {
   rank: number;
@@ -21,6 +22,8 @@ interface RankingEntry {
   totalPoints: number;
   exactMatches: number;
   correctWinners: number;
+  teamsBonus: number;
+  phaseScores?: { [key in TournamentPhase]?: PhaseScore };
 }
 
 export function Ranking() {
@@ -43,34 +46,57 @@ export function Ranking() {
 
         for (const pollaDoc of pollasSnap.docs) {
           const data = pollaDoc.data();
-          const predictions = data.groupPredictions || {};
           
-          const predictionMap: { [matchId: string]: { score1: number; score2: number } } = {};
-          for (const [matchId, pred] of Object.entries(predictions)) {
-            const p = pred as { score1?: number; score2?: number };
-            if (p.score1 !== undefined && p.score2 !== undefined) {
-              predictionMap[matchId] = { score1: p.score1, score2: p.score2 };
+          // Nuevo sistema: usar phases si existe
+          if (data.phases) {
+            const phaseScores = data.scores as { [key in TournamentPhase]?: PhaseScore } || {};
+            const totals = calculateTotalScore(phaseScores);
+            
+            entries.push({
+              rank: 0,
+              userId: data.userId || pollaDoc.id,
+              userName: data.userName || 'Anónimo',
+              totalPoints: totals.totalPoints,
+              exactMatches: totals.totalExactMatches,
+              correctWinners: totals.totalCorrectWinners,
+              teamsBonus: totals.totalTeamsBonus,
+              phaseScores,
+            });
+          } else {
+            // Compatibilidad con sistema anterior (solo groupPredictions)
+            const predictions = data.groupPredictions || {};
+            
+            const predictionMap: { [matchId: string]: { score1: number; score2: number } } = {};
+            for (const [matchId, pred] of Object.entries(predictions)) {
+              const p = pred as { score1?: number; score2?: number };
+              if (p.score1 !== undefined && p.score2 !== undefined) {
+                predictionMap[matchId] = { score1: p.score1, score2: p.score2 };
+              }
             }
+
+            const score: ScoreResult = calculateScore(predictionMap, matches);
+
+            entries.push({
+              rank: 0,
+              userId: data.userId || pollaDoc.id,
+              userName: data.userName || 'Anónimo',
+              totalPoints: score.totalPoints,
+              exactMatches: score.exactMatches,
+              correctWinners: score.correctWinners,
+              teamsBonus: 0,
+            });
           }
-
-          const score: ScoreResult = calculateScore(predictionMap, matches);
-
-          entries.push({
-            rank: 0,
-            userId: data.userId || pollaDoc.id,
-            userName: data.userName || 'Anónimo',
-            totalPoints: score.totalPoints,
-            exactMatches: score.exactMatches,
-            correctWinners: score.correctWinners,
-          });
         }
 
+        // Ordenar: puntos > exactos > ganadores > bonus equipos
         entries.sort((a, b) => {
           if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
           if (b.exactMatches !== a.exactMatches) return b.exactMatches - a.exactMatches;
-          return b.correctWinners - a.correctWinners;
+          if (b.correctWinners !== a.correctWinners) return b.correctWinners - a.correctWinners;
+          return b.teamsBonus - a.teamsBonus;
         });
 
+        // Asignar ranking con empates
         entries.forEach((entry, index) => {
           if (index === 0) {
             entry.rank = 1;
@@ -79,7 +105,8 @@ export function Ranking() {
             if (
               entry.totalPoints === prev.totalPoints &&
               entry.exactMatches === prev.exactMatches &&
-              entry.correctWinners === prev.correctWinners
+              entry.correctWinners === prev.correctWinners &&
+              entry.teamsBonus === prev.teamsBonus
             ) {
               entry.rank = prev.rank;
             } else {
@@ -193,14 +220,18 @@ export function Ranking() {
                       <div className="text-4xl font-bold text-[#E85D24]">{participant.totalPoints}</div>
                       <div className="text-xs text-slate-500 mt-1">puntos</div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div className="bg-white border-2 border-slate-200 rounded-xl p-3">
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className="bg-white border-2 border-slate-200 rounded-xl p-2">
                         <div className="text-slate-500 text-xs mb-1">Exactos</div>
-                        <div className="text-emerald-600 text-xl font-bold">{participant.exactMatches}</div>
+                        <div className="text-emerald-600 text-lg font-bold">{participant.exactMatches}</div>
                       </div>
-                      <div className="bg-white border-2 border-slate-200 rounded-xl p-3">
-                        <div className="text-slate-500 text-xs mb-1">Ganadores</div>
-                        <div className="text-[#1E3A5F] text-xl font-bold">{participant.correctWinners}</div>
+                      <div className="bg-white border-2 border-slate-200 rounded-xl p-2">
+                        <div className="text-slate-500 text-xs mb-1">Ganador</div>
+                        <div className="text-[#1E3A5F] text-lg font-bold">{participant.correctWinners}</div>
+                      </div>
+                      <div className="bg-white border-2 border-slate-200 rounded-xl p-2">
+                        <div className="text-slate-500 text-xs mb-1">Equipos</div>
+                        <div className="text-[#D4A824] text-lg font-bold">{participant.teamsBonus}</div>
                       </div>
                     </div>
                   </div>
@@ -214,7 +245,7 @@ export function Ranking() {
             <div className="border-b border-slate-200 bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] px-6 py-4">
               <h2 className="text-white font-bold text-lg">Clasificación Completa</h2>
               <p className="text-sm text-slate-300 mt-1">
-                Sistema de puntuación: 5 puntos (exacto) | 3 puntos (ganador) | 
+                Puntuación: {SCORING.EXACT_MATCH} pts (exacto) | {SCORING.CORRECT_WINNER} pts (ganador) | +{SCORING.TEAM_ADVANCED} pts (equipo avanza) | 
                 Participantes: {ranking.length}
               </p>
             </div>
@@ -226,6 +257,7 @@ export function Ranking() {
                   <TableHead className="text-slate-600 font-semibold text-right">Puntos</TableHead>
                   <TableHead className="text-slate-600 font-semibold text-right">Exactos</TableHead>
                   <TableHead className="text-slate-600 font-semibold text-right">Ganadores</TableHead>
+                  <TableHead className="text-slate-600 font-semibold text-right">Equipos</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -281,6 +313,12 @@ export function Ranking() {
                           <span className="text-lg font-bold">{participant.correctWinners}</span>
                         </div>
                       </TableCell>
+                      <TableCell className="text-right">
+                        <div className="inline-flex items-center gap-1 bg-[#D4A824]/10 border-2 border-[#D4A824]/20 text-[#D4A824] px-3 py-1.5 rounded-xl">
+                          <Users className="size-4" />
+                          <span className="text-lg font-bold">{participant.teamsBonus}</span>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -291,46 +329,57 @@ export function Ranking() {
       )}
 
       {/* Scoring System Info */}
-      <div className="mt-8 grid md:grid-cols-3 gap-6">
+      <div className="mt-8 grid md:grid-cols-4 gap-4">
         <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
-          <CardContent className="p-6">
-            <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mb-4">
-              <Trophy className="size-7 text-emerald-600" />
+          <CardContent className="p-5">
+            <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center mb-3">
+              <Trophy className="size-6 text-emerald-600" />
             </div>
-            <h3 className="text-slate-900 font-bold mb-2 text-lg">Marcador Exacto</h3>
-            <div className="text-4xl font-bold text-emerald-600 mb-2">+5</div>
-            <p className="text-sm text-slate-500">
-              Predijiste el resultado exacto del partido
+            <h3 className="text-slate-900 font-bold mb-1">Marcador Exacto</h3>
+            <div className="text-3xl font-bold text-emerald-600 mb-1">+{SCORING.EXACT_MATCH}</div>
+            <p className="text-xs text-slate-500">
+              Resultado exacto del partido
             </p>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
-          <CardContent className="p-6">
-            <div className="w-14 h-14 bg-[#1E3A5F]/10 rounded-2xl flex items-center justify-center mb-4">
-              <Award className="size-7 text-[#1E3A5F]" />
+          <CardContent className="p-5">
+            <div className="w-12 h-12 bg-[#1E3A5F]/10 rounded-2xl flex items-center justify-center mb-3">
+              <Award className="size-6 text-[#1E3A5F]" />
             </div>
-            <h3 className="text-slate-900 font-bold mb-2 text-lg">Ganador Correcto</h3>
-            <div className="text-4xl font-bold text-[#1E3A5F] mb-2">+3</div>
-            <p className="text-sm text-slate-500">
-              Acertaste el ganador pero no el marcador exacto
+            <h3 className="text-slate-900 font-bold mb-1">Ganador Correcto</h3>
+            <div className="text-3xl font-bold text-[#1E3A5F] mb-1">+{SCORING.CORRECT_WINNER}</div>
+            <p className="text-xs text-slate-500">
+              Acertaste quién gana (o empate)
             </p>
           </CardContent>
         </Card>
 
         <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
-          <CardContent className="p-6">
-            <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
-              <Medal className="size-7 text-slate-600" />
+          <CardContent className="p-5">
+            <div className="w-12 h-12 bg-[#D4A824]/10 rounded-2xl flex items-center justify-center mb-3">
+              <Users className="size-6 text-[#D4A824]" />
             </div>
-            <h3 className="text-slate-900 font-bold mb-2 text-lg">Desempates</h3>
-            <div className="text-sm text-slate-600 space-y-2">
+            <h3 className="text-slate-900 font-bold mb-1">Equipo Avanza</h3>
+            <div className="text-3xl font-bold text-[#D4A824] mb-1">+{SCORING.TEAM_ADVANCED}</div>
+            <p className="text-xs text-slate-500">
+              Bonus por equipo que pasa de ronda
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
+          <CardContent className="p-5">
+            <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mb-3">
+              <Medal className="size-6 text-slate-600" />
+            </div>
+            <h3 className="text-slate-900 font-bold mb-1">Desempates</h3>
+            <div className="text-xs text-slate-600 space-y-1">
               <p>1. Puntos totales</p>
               <p>2. Marcadores exactos</p>
               <p>3. Ganadores correctos</p>
-              <p className="mt-3 text-[#E85D24] font-medium">
-                Si empatan, comparten posición
-              </p>
+              <p>4. Equipos acertados</p>
             </div>
           </CardContent>
         </Card>

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { db, auth } from '../lib/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Match } from '../utils/types';
-import { CheckCircle2, XCircle, Calendar, Trophy, TrendingUp, Loader2, ClipboardList } from 'lucide-react';
+import { Match, PhaseScore } from '../utils/types';
+import { PHASES, GROUPS, TournamentPhase } from '../utils/constants';
+import { calculateScore, calculateTeamsBonus } from '../utils/scoring';
+import { CheckCircle2, XCircle, Trophy, TrendingUp, Loader2, ClipboardList, Award, Users } from 'lucide-react';
 import { PredictionForm } from './PredictionForm';
-import { Alert, AlertDescription } from './ui/alert';
-import { Card, CardContent } from './ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { TeamDisplay } from './TeamDisplay';
 
 interface MatchComparisonProps {
@@ -75,18 +76,12 @@ function MatchComparison({ predicted, actual }: MatchComparisonProps) {
       </div>
 
       {/* Badge */}
-      <div className="w-16 text-right">
+      <div className="w-12 text-right">
         {hasResult ? (
-          isExactMatch ? (
-            <span className="text-emerald-600 text-xs font-bold">+5</span>
-          ) : isCorrectWinner ? (
-            <span className="text-[#1E3A5F] text-xs font-bold">+3</span>
-          ) : (
-            <span className="text-red-500 text-xs font-bold">0</span>
-          )
-        ) : (
-          <span className="text-slate-400 text-xs">Pendiente</span>
-        )}
+          isExactMatch ? <span className="text-emerald-600 text-xs font-bold">+5</span> :
+          isCorrectWinner ? <span className="text-[#1E3A5F] text-xs font-bold">+3</span> :
+          <span className="text-red-500 text-xs font-bold">0</span>
+        ) : <span className="text-slate-400 text-xs">--</span>}
       </div>
     </div>
   );
@@ -98,10 +93,12 @@ export function MyPrediction() {
   const [actualMatchesMap, setActualMatchesMap] = useState<{ [key: string]: Match }>({});
   const [predictionsByGroup, setPredictionsByGroup] = useState<{ [group: string]: Match[] }>({});
   const [selectedGroup, setSelectedGroup] = useState<string>('A');
+  const [phaseScores, setPhaseScores] = useState<{ [key: string]: PhaseScore }>({});
 
   useEffect(() => {
     const fetchData = async (uid: string) => {
       try {
+        // Cargar partidos reales
         const querySnapshot = await getDocs(collection(db, 'partidos'));
         const matchesMap: { [key: string]: Match } = {};
         querySnapshot.forEach((docSnap) => {
@@ -109,6 +106,7 @@ export function MyPrediction() {
         });
         setActualMatchesMap(matchesMap);
 
+        // Cargar predicción del usuario
         const docRef = doc(db, 'polla_completa', uid);
         const docSnap = await getDoc(docRef);
 
@@ -116,6 +114,7 @@ export function MyPrediction() {
           const data = docSnap.data();
           setUserPrediction(data);
 
+          // Agrupar predicciones por grupo
           const grouped: { [group: string]: Match[] } = {};
           const predictions = data.groupPredictions || {};
 
@@ -139,6 +138,27 @@ export function MyPrediction() {
           });
 
           setPredictionsByGroup(grouped);
+
+          // Calcular puntuación por fase
+          const actualMatches = Object.values(matchesMap);
+          const groupScore = calculateScore(predictions, actualMatches);
+          
+          // Calcular bonus de equipos (si hay datos de equipos que pasaron)
+          const teamsBonus = data.phases?.groups?.teamsAdvancing 
+            ? calculateTeamsBonus(data.phases.groups.teamsAdvancing, data.actualTeamsAdvanced || [])
+            : { teamsCorrect: 0, bonusPoints: 0 };
+
+          setPhaseScores({
+            groups: {
+              phase: 'groups',
+              exactMatches: groupScore.exactMatches,
+              correctWinners: groupScore.correctWinners,
+              teamsAdvancedBonus: teamsBonus.teamsCorrect,
+              matchPoints: groupScore.totalPoints,
+              bonusPoints: teamsBonus.bonusPoints,
+              totalPoints: groupScore.totalPoints + teamsBonus.bonusPoints
+            }
+          });
         }
       } catch (error) {
         console.error("Error al cargar datos:", error);
@@ -148,52 +168,26 @@ export function MyPrediction() {
     };
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        fetchData(user.uid);
-      } else {
-        setLoading(false);
-      }
+      if (user) fetchData(user.uid);
+      else setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <Loader2 className="animate-spin size-12 text-[#1E3A5F] mx-auto mb-4" />
-          <p className="text-slate-500 font-medium">Cargando predicción...</p>
-        </div>
+        <Loader2 className="animate-spin size-12 text-[#1E3A5F]" />
       </div>
     );
   }
 
-  if (!userPrediction) {
-    return <PredictionForm />;
-  }
+  if (!userPrediction) return <PredictionForm />;
 
   const groups = Object.keys(predictionsByGroup).sort();
+  const groupScore = phaseScores.groups;
+  const totalPoints = groupScore?.totalPoints || 0;
 
-  // Estadísticas totales
-  let totalExact = 0, totalCorrectWinner = 0, totalIncorrect = 0;
-  groups.forEach((groupId) => {
-    predictionsByGroup[groupId].forEach((predicted) => {
-      const actual = actualMatchesMap[predicted.id];
-      if (hasOfficialResult(actual)) {
-        if (predicted.score1 === actual.score1 && predicted.score2 === actual.score2) totalExact++;
-        else {
-          const predResult = predicted.score1! > predicted.score2! ? 1 : predicted.score1! < predicted.score2! ? -1 : 0;
-          const actualResult = actual.score1! > actual.score2! ? 1 : actual.score1! < actual.score2! ? -1 : 0;
-          if (predResult === actualResult) totalCorrectWinner++;
-          else totalIncorrect++;
-        }
-      }
-    });
-  });
-  const totalPoints = totalExact * 5 + totalCorrectWinner * 3;
-
-  // Stats por grupo
   const getGroupStats = (groupId: string) => {
     let exact = 0, correct = 0, incorrect = 0;
     predictionsByGroup[groupId]?.forEach((p) => {
@@ -211,19 +205,11 @@ export function MyPrediction() {
     return { exact, correct, incorrect, points: exact * 5 + correct * 3 };
   };
 
-  const formatSubmittedAt = () => {
-    if (!userPrediction.submittedAt) return 'N/A';
-    if (userPrediction.submittedAt.toDate) {
-      return userPrediction.submittedAt.toDate().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
-    }
-    return new Date(userPrediction.submittedAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
-  };
-
   const currentGroupStats = getGroupStats(selectedGroup);
   const currentPredictions = predictionsByGroup[selectedGroup] || [];
 
   return (
-    <div className="max-w-5xl mx-auto pb-10">
+    <div className="max-w-6xl mx-auto pb-10">
       {/* Header */}
       <div className="mb-6 flex items-center gap-4">
         <div className="w-14 h-14 bg-gradient-to-br from-[#D4A824] to-[#B8941E] rounded-2xl flex items-center justify-center shadow-lg">
@@ -231,83 +217,128 @@ export function MyPrediction() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Mi Predicción</h1>
-          <p className="text-slate-500 text-sm">Compara tus predicciones con los resultados</p>
+          <p className="text-slate-500 text-sm">Puntos por fase y total</p>
         </div>
       </div>
 
-      {/* Stats Summary - Compacto */}
-      <div className="grid grid-cols-4 gap-3 mb-6">
-        <Card className="border-0 shadow-md bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white rounded-xl">
-          <CardContent className="p-3 text-center">
-            <TrendingUp className="size-5 mx-auto mb-1 opacity-80" />
-            <div className="text-2xl font-bold">{totalPoints}</div>
-            <div className="text-[10px] opacity-70 uppercase">Puntos</div>
+      {/* Resumen de puntos por fase */}
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {/* Total */}
+        <Card className="border-0 shadow-lg bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white rounded-2xl">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/70 text-sm">Total</p>
+                <p className="text-4xl font-bold">{totalPoints}</p>
+                <p className="text-white/50 text-xs mt-1">puntos</p>
+              </div>
+              <Trophy className="size-10 text-[#D4A824]" />
+            </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-md bg-white rounded-xl">
-          <CardContent className="p-3 text-center">
-            <CheckCircle2 className="size-5 mx-auto mb-1 text-emerald-500" />
-            <div className="text-2xl font-bold text-emerald-600">{totalExact}</div>
-            <div className="text-[10px] text-slate-500 uppercase">Exactos</div>
+
+        {/* Fase Grupos */}
+        <Card className="border-0 shadow-md bg-white rounded-2xl">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm">Grupos</p>
+                <p className="text-3xl font-bold text-[#1E3A5F]">{groupScore?.matchPoints || 0}</p>
+                <p className="text-slate-400 text-xs mt-1">
+                  +{groupScore?.bonusPoints || 0} bonus
+                </p>
+              </div>
+              <Users className="size-8 text-[#1E3A5F]/30" />
+            </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-md bg-white rounded-xl">
-          <CardContent className="p-3 text-center">
-            <CheckCircle2 className="size-5 mx-auto mb-1 text-[#1E3A5F]" />
-            <div className="text-2xl font-bold text-[#1E3A5F]">{totalCorrectWinner}</div>
-            <div className="text-[10px] text-slate-500 uppercase">Ganador</div>
+
+        {/* Stats Exactos */}
+        <Card className="border-0 shadow-md bg-white rounded-2xl">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm">Exactos</p>
+                <p className="text-3xl font-bold text-emerald-600">{groupScore?.exactMatches || 0}</p>
+                <p className="text-slate-400 text-xs mt-1">×5 pts c/u</p>
+              </div>
+              <CheckCircle2 className="size-8 text-emerald-200" />
+            </div>
           </CardContent>
         </Card>
-        <Card className="border-0 shadow-md bg-white rounded-xl">
-          <CardContent className="p-3 text-center">
-            <XCircle className="size-5 mx-auto mb-1 text-red-500" />
-            <div className="text-2xl font-bold text-red-500">{totalIncorrect}</div>
-            <div className="text-[10px] text-slate-500 uppercase">Fallos</div>
+
+        {/* Stats Ganadores */}
+        <Card className="border-0 shadow-md bg-white rounded-2xl">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-slate-500 text-sm">Ganador</p>
+                <p className="text-3xl font-bold text-[#1E3A5F]">{groupScore?.correctWinners || 0}</p>
+                <p className="text-slate-400 text-xs mt-1">×3 pts c/u</p>
+              </div>
+              <Award className="size-8 text-[#1E3A5F]/20" />
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* User Info */}
-      <Alert className="mb-6 border-2 border-[#1E3A5F]/20 bg-[#1E3A5F]/5 rounded-xl py-3">
-        <Trophy className="size-4 text-[#D4A824]" />
-        <AlertDescription className="text-[#1E3A5F] text-sm ml-2">
-          <span className="font-bold">{userPrediction.userName}</span> — {formatSubmittedAt()}
-        </AlertDescription>
-      </Alert>
+      {/* Desglose por fases (futuras fases aparecerán aquí) */}
+      <Card className="border-0 shadow-md rounded-2xl mb-6">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base text-slate-700">Puntos por Fase</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="divide-y divide-slate-100">
+            {PHASES.map(phase => {
+              const score = phaseScores[phase.id];
+              const isActive = phase.id === 'groups'; // Por ahora solo grupos activo
+              return (
+                <div key={phase.id} className={`flex items-center justify-between px-5 py-3 ${!isActive ? 'opacity-40' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isActive ? 'bg-[#1E3A5F]' : 'bg-slate-200'}`}>
+                      <span className={`text-sm font-bold ${isActive ? 'text-white' : 'text-slate-500'}`}>
+                        {phase.shortName.charAt(0)}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900">{phase.name}</p>
+                      <p className="text-xs text-slate-500">{phase.matchCount} partidos</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-lg text-[#1E3A5F]">{score?.totalPoints || 0}</p>
+                    {score && score.bonusPoints > 0 && (
+                      <p className="text-xs text-[#D4A824]">+{score.bonusPoints} bonus</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Selector de Grupos - 12 cuadrados */}
+      {/* Selector de grupos + Partidos */}
       <div className="mb-6">
         <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Fase de Grupos</h2>
         <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
           {groups.map(g => {
             const stats = getGroupStats(g);
             const isSelected = selectedGroup === g;
-            const hasPoints = stats.points > 0;
             
             return (
-              <button
-                key={g}
-                onClick={() => setSelectedGroup(g)}
+              <button key={g} onClick={() => setSelectedGroup(g)}
                 className={`relative aspect-square rounded-xl font-bold text-lg transition-all ${
-                  isSelected 
-                    ? 'bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white shadow-lg scale-105' 
-                    : 'bg-white text-slate-700 border-2 border-slate-200 hover:border-[#1E3A5F] hover:shadow-md'
+                  isSelected ? 'bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white shadow-lg scale-105' 
+                  : 'bg-white text-slate-700 border-2 border-slate-200 hover:border-[#1E3A5F]'
                 }`}
               >
                 {g}
                 {/* Indicador de puntos */}
-                {hasPoints && !isSelected && (
+                {stats.points > 0 && !isSelected && (
                   <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                     {stats.points}
                   </span>
-                )}
-                {/* Indicadores de resultados */}
-                {isSelected && (
-                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
-                    {stats.exact > 0 && <span className="w-2 h-2 bg-emerald-400 rounded-full" />}
-                    {stats.correct > 0 && <span className="w-2 h-2 bg-white/60 rounded-full" />}
-                    {stats.incorrect > 0 && <span className="w-2 h-2 bg-red-400 rounded-full" />}
-                  </div>
                 )}
               </button>
             );
@@ -315,75 +346,33 @@ export function MyPrediction() {
         </div>
       </div>
 
-      {/* Fixture del grupo seleccionado */}
+      {/* Partidos del grupo seleccionado */}
       <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-        {/* Header del grupo */}
-        <div className="bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] px-5 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-xl">{selectedGroup}</span>
+        <CardHeader className="bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] text-white py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                <span className="text-white font-bold text-xl">{selectedGroup}</span>
+              </div>
+              <div>
+                <CardTitle className="text-lg">Grupo {selectedGroup}</CardTitle>
+                <p className="text-white/70 text-sm">{currentPredictions.length} partidos</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-white font-bold text-lg">Grupo {selectedGroup}</h3>
-              <p className="text-white/70 text-sm">{currentPredictions.length} partidos</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {currentGroupStats.exact > 0 && (
-              <div className="flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-1.5 rounded-lg">
-                <CheckCircle2 className="size-4" />
-                <span className="font-bold text-sm">{currentGroupStats.exact}</span>
-              </div>
-            )}
-            {currentGroupStats.correct > 0 && (
-              <div className="flex items-center gap-1.5 bg-white/20 text-white px-3 py-1.5 rounded-lg">
-                <CheckCircle2 className="size-4" />
-                <span className="font-bold text-sm">{currentGroupStats.correct}</span>
-              </div>
-            )}
-            {currentGroupStats.incorrect > 0 && (
-              <div className="flex items-center gap-1.5 bg-red-500 text-white px-3 py-1.5 rounded-lg">
-                <XCircle className="size-4" />
-                <span className="font-bold text-sm">{currentGroupStats.incorrect}</span>
-              </div>
-            )}
-            <div className="ml-2 bg-[#D4A824] text-white px-3 py-1.5 rounded-lg">
-              <span className="font-bold text-sm">{currentGroupStats.points} pts</span>
+            <div className="flex items-center gap-2">
+              {currentGroupStats.exact > 0 && (
+                <div className="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-sm font-bold">{currentGroupStats.exact} exactos</div>
+              )}
+              <div className="bg-[#D4A824] text-white px-3 py-1.5 rounded-lg text-sm font-bold">{currentGroupStats.points} pts</div>
             </div>
           </div>
-        </div>
-
-        {/* Lista de partidos */}
+        </CardHeader>
         <CardContent className="p-4 space-y-2">
           {currentPredictions.map((predicted) => (
-            <MatchComparison
-              key={predicted.id}
-              predicted={predicted}
-              actual={actualMatchesMap[predicted.id]}
-            />
+            <MatchComparison key={predicted.id} predicted={predicted} actual={actualMatchesMap[predicted.id]} />
           ))}
         </CardContent>
       </Card>
-
-      {/* Knockout Picks */}
-      {userPrediction.knockoutPicks && Object.keys(userPrediction.knockoutPicks).length > 0 && (
-        <div className="mt-8">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Fase Final</h2>
-          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-            <CardContent className="p-6 text-center">
-              {userPrediction.knockoutPicks['F-1'] && (
-                <>
-                  <div className="text-xs text-slate-400 mb-3 uppercase tracking-wide">Tu Campeón</div>
-                  <div className="inline-flex items-center gap-3 bg-gradient-to-r from-[#D4A824] via-[#E8C547] to-[#D4A824] text-white px-8 py-4 rounded-2xl font-bold text-xl shadow-xl">
-                    <Trophy className="size-7" />
-                    <TeamDisplay team={userPrediction.knockoutPicks['F-1']} flagSize="lg" />
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

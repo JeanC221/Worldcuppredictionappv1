@@ -5,12 +5,12 @@ import {
 } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { groupFixtures } from '../utils/mockData';
-import { Match } from '../utils/types';
+import { Match, PhaseScore } from '../utils/types';
 import { useAdmin } from '../hooks/useAdmin';
 import { 
   Shield, Database, Trophy, Users, RefreshCw, Save, 
   CheckCircle, AlertTriangle, Loader2, ClipboardList, Settings,
-  Trash2, Search, Filter, Download 
+  Trash2, Search, Download 
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -27,6 +27,13 @@ import {
 import { broadcastNotification, createNotification } from '../hooks/useNotifications';
 import { TeamDisplay } from './TeamDisplay';
 import { generatePollaPDF } from '../utils/pdfGenerator';
+import { 
+  calculateScore, 
+  calculatePhaseScore, 
+  calculateTotalScore,
+  getTeamsAdvancingFromGroups 
+} from '../utils/scoring';
+import { TournamentPhase, PHASES, SCORING } from '../utils/constants';
 
 interface MatchWithScore extends Match {
   status?: string;
@@ -38,7 +45,13 @@ interface UserPolla {
   email: string;
   submittedAt: string;
   totalPoints: number;
+  exactMatches?: number;
+  correctWinners?: number;
+  teamsBonus?: number;
 }
+
+// Los 12 grupos del Mundial 2026
+const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 
 export function AdminPanel() {
   const navigate = useNavigate();
@@ -50,7 +63,7 @@ export function AdminPanel() {
   const [editedScores, setEditedScores] = useState<{ [matchId: string]: { score1: string; score2: string } }>({});
   const [savingMatch, setSavingMatch] = useState<string | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
-  const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  const [selectedGroup, setSelectedGroup] = useState<string>('A');
   
   // Estados para usuarios
   const [users, setUsers] = useState<UserPolla[]>([]);
@@ -64,6 +77,7 @@ export function AdminPanel() {
   const [seedingStatus, setSeedingStatus] = useState('');
   const [isSeeding, setIsSeeding] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [recalculateProgress, setRecalculateProgress] = useState('');
   
   // Stats
   const [stats, setStats] = useState({
@@ -110,7 +124,10 @@ export function AdminPanel() {
           userName: data.userName || 'Sin nombre',
           email: data.userEmail || '',
           submittedAt: data.submittedAt?.toDate?.()?.toLocaleDateString('es-ES') || 'N/A',
-          totalPoints: data.totalPoints || 0
+          totalPoints: data.totalPoints || 0,
+          exactMatches: data.totalExactMatches || data.exactMatches || 0,
+          correctWinners: data.totalCorrectWinners || data.correctWinners || 0,
+          teamsBonus: data.totalTeamsBonus || 0
         });
       });
       
@@ -177,8 +194,16 @@ export function AdminPanel() {
         for (const pollaDoc of pollasSnap.docs) {
           const userId = pollaDoc.data().userId;
           allUserIds.push(userId);
-          const userPredictions = pollaDoc.data().groupPredictions || {};
-          const userPred = userPredictions[matchId];
+          
+          // Buscar predicción en el nuevo sistema (phases) o el anterior (groupPredictions)
+          const data = pollaDoc.data();
+          let userPred = null;
+          
+          if (data.phases?.groups?.matchPredictions?.[matchId]) {
+            userPred = data.phases.groups.matchPredictions[matchId];
+          } else if (data.groupPredictions?.[matchId]) {
+            userPred = data.groupPredictions[matchId];
+          }
           
           if (userPred) {
             const isExact = userPred.score1 === score1 && userPred.score2 === score2;
@@ -187,10 +212,10 @@ export function AdminPanel() {
             const isCorrectWinner = !isExact && predResult === actualResult;
             
             if (isExact) {
-              await createNotification(userId, 'exact_match', '¡Marcador Exacto! +5 pts',
+              await createNotification(userId, 'exact_match', `¡Marcador Exacto! +${SCORING.EXACT_MATCH} pts`,
                 `Acertaste ${matchData.team1} ${score1} - ${score2} ${matchData.team2}`, { matchId });
             } else if (isCorrectWinner) {
-              await createNotification(userId, 'match_result', '¡Ganador Correcto! +3 pts',
+              await createNotification(userId, 'match_result', `¡Ganador Correcto! +${SCORING.CORRECT_WINNER} pts`,
                 `Acertaste el ganador de ${matchData.team1} vs ${matchData.team2}`, { matchId });
             }
           }
@@ -246,6 +271,7 @@ export function AdminPanel() {
           batch.set(matchRef, {
             ...match,
             group: groupData.group,
+            phase: 'groups' as TournamentPhase,
             score1: null,
             score2: null,
             status: 'SCHEDULED'
@@ -267,61 +293,119 @@ export function AdminPanel() {
 
   const handleRecalculateRankings = async () => {
     setIsRecalculating(true);
+    setRecalculateProgress('Cargando datos...');
+    
     try {
-      // Obtener todos los resultados reales
+      // Obtener todos los partidos
       const matchesSnap = await getDocs(collection(db, 'partidos'));
-      const realResults: { [id: string]: { score1: number; score2: number } } = {};
+      const allMatchesData: Match[] = matchesSnap.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      })) as Match[];
       
-      matchesSnap.forEach(docSnap => {
-        const data = docSnap.data();
-        if (data.score1 !== null && data.score1 !== undefined) {
-          realResults[docSnap.id] = { score1: data.score1, score2: data.score2 };
+      // Separar partidos por grupo para fase de grupos
+      const groupMatches = allMatchesData.filter(m => !m.phase || m.phase === 'groups');
+      
+      // Agrupar partidos por grupo para getTeamsAdvancingFromGroups
+      const matchesByGroup: { [group: string]: Match[] } = {};
+      for (const match of groupMatches) {
+        if (!matchesByGroup[match.group]) {
+          matchesByGroup[match.group] = [];
         }
-      });
-
+        matchesByGroup[match.group].push(match);
+      }
+      
+      // Crear predicciones "reales" basadas en resultados actuales para calcular equipos que avanzaron
+      const realPredictions: { [matchId: string]: { score1: number; score2: number } } = {};
+      for (const match of groupMatches) {
+        if (match.score1 !== undefined && match.score1 !== null && 
+            match.score2 !== undefined && match.score2 !== null) {
+          realPredictions[match.id] = { score1: match.score1, score2: match.score2 };
+        }
+      }
+      
+      // Calcular equipos que realmente avanzaron (basado en resultados reales)
+      const actualTeamsAdvancing = getTeamsAdvancingFromGroups(realPredictions, matchesByGroup);
+      
+      setRecalculateProgress('Recalculando usuarios...');
+      
       // Recalcular puntos de cada usuario
       const pollasSnap = await getDocs(collection(db, 'polla_completa'));
       const batch = writeBatch(db);
+      let processedCount = 0;
       
       for (const pollaDoc of pollasSnap.docs) {
         const data = pollaDoc.data();
-        const predictions = data.groupPredictions || {};
-        let totalPoints = 0;
-        let exactMatches = 0;
-        let correctWinners = 0;
-
-        for (const [matchId, result] of Object.entries(realResults)) {
-          const pred = predictions[matchId];
-          if (pred) {
-            const isExact = pred.score1 === result.score1 && pred.score2 === result.score2;
-            if (isExact) {
-              totalPoints += 5;
-              exactMatches++;
-            } else {
-              const predResult = pred.score1 > pred.score2 ? 1 : pred.score1 < pred.score2 ? -1 : 0;
-              const actualResult = result.score1 > result.score2 ? 1 : result.score1 < result.score2 ? -1 : 0;
-              if (predResult === actualResult) {
-                totalPoints += 3;
-                correctWinners++;
-              }
+        
+        // Determinar qué sistema usa el usuario
+        if (data.phases) {
+          // Nuevo sistema de fases
+          const phaseScores: { [key in TournamentPhase]?: PhaseScore } = {};
+          
+          // Calcular puntuación para fase de grupos
+          if (data.phases.groups) {
+            const userGroupPredictions = data.phases.groups.matchPredictions || {};
+            const userTeamsAdvancing = data.phases.groups.teamsAdvancing || [];
+            
+            const groupScore = calculatePhaseScore(
+              'groups',
+              userGroupPredictions,
+              groupMatches,
+              userTeamsAdvancing,
+              actualTeamsAdvancing
+            );
+            
+            phaseScores['groups'] = groupScore;
+          }
+          
+          // TODO: Agregar cálculo para otras fases (r32, r16, qf, sf, final) cuando se implementen
+          
+          // Calcular totales
+          const totals = calculateTotalScore(phaseScores);
+          
+          batch.update(doc(db, 'polla_completa', pollaDoc.id), {
+            scores: phaseScores,
+            totalPoints: totals.totalPoints,
+            totalExactMatches: totals.totalExactMatches,
+            totalCorrectWinners: totals.totalCorrectWinners,
+            totalTeamsBonus: totals.totalTeamsBonus
+          });
+          
+        } else {
+          // Sistema anterior (groupPredictions directo)
+          const predictions = data.groupPredictions || {};
+          
+          const predictionMap: { [matchId: string]: { score1: number; score2: number } } = {};
+          for (const [matchId, pred] of Object.entries(predictions)) {
+            const p = pred as { score1?: number; score2?: number };
+            if (p.score1 !== undefined && p.score2 !== undefined) {
+              predictionMap[matchId] = { score1: p.score1, score2: p.score2 };
             }
           }
-        }
 
-        batch.update(doc(db, 'polla_completa', pollaDoc.id), {
-          totalPoints,
-          exactMatches,
-          correctWinners
-        });
+          const score = calculateScore(predictionMap, groupMatches);
+
+          batch.update(doc(db, 'polla_completa', pollaDoc.id), {
+            totalPoints: score.totalPoints,
+            exactMatches: score.exactMatches,
+            correctWinners: score.correctWinners,
+            totalTeamsBonus: 0
+          });
+        }
+        
+        processedCount++;
+        setRecalculateProgress(`Procesando ${processedCount}/${pollasSnap.size} usuarios...`);
       }
 
       await batch.commit();
+      setRecalculateProgress('');
       await fetchData();
       alert('Rankings recalculados correctamente');
       
     } catch (error) {
       console.error('Error recalculando:', error);
       alert('Error al recalcular');
+      setRecalculateProgress('');
     } finally {
       setIsRecalculating(false);
     }
@@ -340,15 +424,18 @@ export function AdminPanel() {
 
       const pollaData = pollaDoc.data();
       
-      // Preparar datos para el PDF
+      // Preparar datos para el PDF - compatible con ambos sistemas
       const pdfData = {
         userName: user.userName,
         email: user.email,
         submittedAt: user.submittedAt,
         totalPoints: user.totalPoints,
-        exactMatches: pollaData.exactMatches || 0,
-        correctWinners: pollaData.correctWinners || 0,
-        groupPredictions: pollaData.groupPredictions || {},
+        exactMatches: pollaData.totalExactMatches || pollaData.exactMatches || 0,
+        correctWinners: pollaData.totalCorrectWinners || pollaData.correctWinners || 0,
+        teamsBonus: pollaData.totalTeamsBonus || 0,
+        // Compatible con ambos sistemas
+        groupPredictions: pollaData.phases?.groups?.matchPredictions || pollaData.groupPredictions || {},
+        teamsAdvancing: pollaData.phases?.groups?.teamsAdvancing || [],
         knockoutPredictions: pollaData.knockoutPredictions || {},
         knockoutPicks: pollaData.knockoutPicks || {}
       };
@@ -402,9 +489,11 @@ export function AdminPanel() {
           email: data.userEmail || '',
           submittedAt: data.submittedAt?.toDate?.()?.toLocaleDateString('es-ES') || 'N/A',
           totalPoints: data.totalPoints || 0,
-          exactMatches: data.exactMatches || 0,
-          correctWinners: data.correctWinners || 0,
-          groupPredictions: data.groupPredictions || {},
+          exactMatches: data.totalExactMatches || data.exactMatches || 0,
+          correctWinners: data.totalCorrectWinners || data.correctWinners || 0,
+          teamsBonus: data.totalTeamsBonus || 0,
+          groupPredictions: data.phases?.groups?.matchPredictions || data.groupPredictions || {},
+          teamsAdvancing: data.phases?.groups?.teamsAdvancing || [],
           knockoutPredictions: data.knockoutPredictions || {},
           knockoutPicks: data.knockoutPicks || {}
         };
@@ -447,11 +536,8 @@ export function AdminPanel() {
     );
   }
 
-  // Filtrar partidos por grupo
-  const groups = [...new Set(allMatches.map(m => m.group))].sort();
-  const filteredMatches = selectedGroup === 'all' 
-    ? allMatches 
-    : allMatches.filter(m => m.group === selectedGroup);
+  // Filtrar partidos por grupo seleccionado
+  const filteredMatches = allMatches.filter(m => m.group === selectedGroup);
 
   // Filtrar usuarios
   const filteredUsers = users.filter(u => 
@@ -549,121 +635,132 @@ export function AdminPanel() {
         <TabsContent value="matches">
           <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
             <CardHeader className="bg-white border-b border-slate-100 pb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <CardTitle className="text-lg">Ingresar Resultados</CardTitle>
+              <div className="flex flex-col gap-4">
+                <CardTitle className="text-lg">Ingresar Resultados - Fase de Grupos</CardTitle>
                 
-                {/* Filtro por grupo */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Filter className="size-4 text-slate-400" />
-                  <div className="flex gap-1 flex-wrap">
-                    <Button
-                      size="sm"
-                      variant={selectedGroup === 'all' ? 'default' : 'outline'}
-                      onClick={() => setSelectedGroup('all')}
-                      className={`h-8 px-3 rounded-lg text-xs ${selectedGroup === 'all' ? 'bg-[#1E3A5F]' : ''}`}
-                    >
-                      Todos
-                    </Button>
-                    {groups.map(g => (
-                      <Button
-                        key={g}
-                        size="sm"
-                        variant={selectedGroup === g ? 'default' : 'outline'}
-                        onClick={() => setSelectedGroup(g)}
-                        className={`h-8 w-8 p-0 rounded-lg text-xs ${selectedGroup === g ? 'bg-[#1E3A5F]' : ''}`}
+                {/* Selector de 12 grupos como grid de cuadrados */}
+                <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
+                  {GROUPS.map(group => {
+                    const groupMatches = allMatches.filter(m => m.group === group);
+                    const playedInGroup = groupMatches.filter(m => m.score1 !== null && m.score1 !== undefined).length;
+                    const isComplete = playedInGroup === groupMatches.length && groupMatches.length > 0;
+                    
+                    return (
+                      <button
+                        key={group}
+                        onClick={() => setSelectedGroup(group)}
+                        className={`
+                          aspect-square rounded-xl flex flex-col items-center justify-center
+                          transition-all duration-200 font-bold text-lg
+                          ${selectedGroup === group
+                            ? 'bg-[#1E3A5F] text-white shadow-lg scale-105'
+                            : isComplete
+                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }
+                        `}
                       >
-                        {g}
-                      </Button>
-                    ))}
-                  </div>
+                        <span>{group}</span>
+                        <span className="text-[10px] font-normal opacity-75">
+                          {playedInGroup}/{groupMatches.length}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </CardHeader>
             
             <CardContent className="p-0">
-              <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-                {filteredMatches.map((match) => {
-                  const isEditing = editedScores[match.id] !== undefined;
-                  const currentScore1 = isEditing ? editedScores[match.id].score1 : (match.score1?.toString() ?? '');
-                  const currentScore2 = isEditing ? editedScores[match.id].score2 : (match.score2?.toString() ?? '');
-                  const hasResult = match.score1 !== null && match.score1 !== undefined;
-                  
-                  return (
-                    <div 
-                      key={match.id}
-                      className={`flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${
-                        hasResult ? 'bg-emerald-50/50' : ''
-                      }`}
-                    >
-                      {/* Grupo badge */}
-                      <div className="w-8 h-8 bg-[#1E3A5F] rounded-lg flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xs font-bold">{match.group}</span>
-                      </div>
-                      
-                      {/* Equipos y scores */}
-                      <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
-                        <TeamDisplay team={match.team1} reverse className="flex-1 justify-end text-sm font-medium text-slate-700" flagSize="sm" />
-                        
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={2}
-                            value={currentScore1}
-                            onChange={(e) => setEditedScores(prev => ({
-                              ...prev,
-                              [match.id]: { 
-                                score1: e.target.value, 
-                                score2: prev[match.id]?.score2 ?? match.score2?.toString() ?? '' 
-                              }
-                            }))}
-                            className="w-12 h-9 text-center font-bold rounded-lg border-2"
-                            placeholder="-"
-                          />
-                          <span className="text-slate-400 font-medium">-</span>
-                          <Input
-                            type="text"
-                            inputMode="numeric"
-                            maxLength={2}
-                            value={currentScore2}
-                            onChange={(e) => setEditedScores(prev => ({
-                              ...prev,
-                              [match.id]: { 
-                                score1: prev[match.id]?.score1 ?? match.score1?.toString() ?? '', 
-                                score2: e.target.value 
-                              }
-                            }))}
-                            className="w-12 h-9 text-center font-bold rounded-lg border-2"
-                            placeholder="-"
-                          />
-                        </div>
-                        
-                        <TeamDisplay team={match.team2} className="flex-1 justify-start text-sm font-medium text-slate-700" flagSize="sm" />
-                      </div>
-                      
-                      {/* Botón guardar */}
-                      <Button
-                        size="sm"
-                        disabled={!isEditing || savingMatch === match.id}
-                        onClick={() => handleSaveScore(match.id)}
-                        className={`h-9 w-9 p-0 rounded-lg ${
-                          isEditing ? 'bg-[#E85D24] hover:bg-[#C44D1A]' : 'bg-slate-200'
+              <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+                {filteredMatches.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500">
+                    No hay partidos en el Grupo {selectedGroup}
+                  </div>
+                ) : (
+                  filteredMatches.map((match) => {
+                    const isEditing = editedScores[match.id] !== undefined;
+                    const currentScore1 = isEditing ? editedScores[match.id].score1 : (match.score1?.toString() ?? '');
+                    const currentScore2 = isEditing ? editedScores[match.id].score2 : (match.score2?.toString() ?? '');
+                    const hasResult = match.score1 !== null && match.score1 !== undefined;
+                    
+                    return (
+                      <div 
+                        key={match.id}
+                        className={`flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${
+                          hasResult ? 'bg-emerald-50/50' : ''
                         }`}
                       >
-                        {savingMatch === match.id ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Save className="size-4" />
+                        {/* Grupo badge */}
+                        <div className="w-8 h-8 bg-[#1E3A5F] rounded-lg flex items-center justify-center flex-shrink-0">
+                          <span className="text-white text-xs font-bold">{match.group}</span>
+                        </div>
+                        
+                        {/* Equipos y scores */}
+                        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+                          <TeamDisplay team={match.team1} reverse className="flex-1 justify-end text-sm font-medium text-slate-700" flagSize="sm" />
+                          
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={2}
+                              value={currentScore1}
+                              onChange={(e) => setEditedScores(prev => ({
+                                ...prev,
+                                [match.id]: { 
+                                  score1: e.target.value, 
+                                  score2: prev[match.id]?.score2 ?? match.score2?.toString() ?? '' 
+                                }
+                              }))}
+                              className="w-12 h-9 text-center font-bold rounded-lg border-2"
+                              placeholder="-"
+                            />
+                            <span className="text-slate-400 font-medium">-</span>
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={2}
+                              value={currentScore2}
+                              onChange={(e) => setEditedScores(prev => ({
+                                ...prev,
+                                [match.id]: { 
+                                  score1: prev[match.id]?.score1 ?? match.score1?.toString() ?? '', 
+                                  score2: e.target.value 
+                                }
+                              }))}
+                              className="w-12 h-9 text-center font-bold rounded-lg border-2"
+                              placeholder="-"
+                            />
+                          </div>
+                          
+                          <TeamDisplay team={match.team2} className="flex-1 justify-start text-sm font-medium text-slate-700" flagSize="sm" />
+                        </div>
+                        
+                        {/* Botón guardar */}
+                        <Button
+                          size="sm"
+                          disabled={!isEditing || savingMatch === match.id}
+                          onClick={() => handleSaveScore(match.id)}
+                          className={`h-9 w-9 p-0 rounded-lg ${
+                            isEditing ? 'bg-[#E85D24] hover:bg-[#C44D1A]' : 'bg-slate-200'
+                          }`}
+                        >
+                          {savingMatch === match.id ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Save className="size-4" />
+                          )}
+                        </Button>
+                        
+                        {/* Indicador de completado */}
+                        {hasResult && (
+                          <CheckCircle className="size-5 text-emerald-500 flex-shrink-0" />
                         )}
-                      </Button>
-                      
-                      {/* Indicador de completado */}
-                      {hasResult && (
-                        <CheckCircle className="size-5 text-emerald-500 flex-shrink-0" />
-                      )}
-                    </div>
-                  );
-                })}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </CardContent>
           </Card>
@@ -726,10 +823,12 @@ export function AdminPanel() {
                         <p className="text-xs text-slate-500 truncate">{user.email}</p>
                       </div>
                       
-                      {/* Puntos */}
+                      {/* Puntos y stats */}
                       <div className="text-right">
-                        <p className="font-bold text-[#1E3A5F]">{user.totalPoints} pts</p>
-                        <p className="text-xs text-slate-400">{user.submittedAt}</p>
+                        <p className="font-bold text-[#E85D24]">{user.totalPoints} pts</p>
+                        <p className="text-xs text-slate-400">
+                          {user.exactMatches || 0}E | {user.correctWinners || 0}G | {user.teamsBonus || 0}B
+                        </p>
                       </div>
                       
                       {/* Acciones */}
@@ -811,7 +910,7 @@ export function AdminPanel() {
               </CardHeader>
               <CardContent className="p-5 space-y-4">
                 <p className="text-sm text-slate-600">
-                  Recalcula los puntos de todos los usuarios basándose en los resultados actuales.
+                  Recalcula puntos de todos los usuarios incluyendo bonus por equipos que avanzan (+{SCORING.TEAM_ADVANCED} pts c/u).
                 </p>
                 <Button 
                   onClick={handleRecalculateRankings}
@@ -822,9 +921,38 @@ export function AdminPanel() {
                   {isRecalculating ? <Loader2 className="size-4 animate-spin mr-2" /> : <RefreshCw className="size-4 mr-2" />}
                   {isRecalculating ? 'Calculando...' : 'Recalcular'}
                 </Button>
+                {recalculateProgress && (
+                  <p className="text-sm text-[#1E3A5F]">{recalculateProgress}</p>
+                )}
               </CardContent>
             </Card>
           </div>
+
+          {/* Info de puntuación */}
+          <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
+            <CardHeader className="bg-[#D4A824]/10 py-4">
+              <CardTitle className="flex items-center gap-2 text-base text-[#D4A824]">
+                <Trophy className="size-5" />
+                Sistema de Puntuación
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5">
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-emerald-50 rounded-xl">
+                  <div className="text-3xl font-bold text-emerald-600">+{SCORING.EXACT_MATCH}</div>
+                  <div className="text-sm text-slate-600">Marcador Exacto</div>
+                </div>
+                <div className="text-center p-4 bg-[#1E3A5F]/10 rounded-xl">
+                  <div className="text-3xl font-bold text-[#1E3A5F]">+{SCORING.CORRECT_WINNER}</div>
+                  <div className="text-sm text-slate-600">Ganador Correcto</div>
+                </div>
+                <div className="text-center p-4 bg-[#D4A824]/10 rounded-xl">
+                  <div className="text-3xl font-bold text-[#D4A824]">+{SCORING.TEAM_ADVANCED}</div>
+                  <div className="text-sm text-slate-600">Equipo que Avanza</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Zona de peligro */}
           <Card className="border-2 border-red-200 shadow-md rounded-2xl overflow-hidden">
