@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { db } from '../lib/firebase';
 import { 
-  collection, getDocs, doc, updateDoc, writeBatch, query, orderBy, deleteDoc 
+  collection, getDocs, doc, updateDoc, writeBatch, query, orderBy, deleteDoc, serverTimestamp, Timestamp, setDoc
 } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { groupFixtures } from '../utils/mockData';
@@ -10,7 +10,7 @@ import { useAdmin } from '../hooks/useAdmin';
 import { 
   Shield, Database, Trophy, Users, RefreshCw, Save, 
   CheckCircle, AlertTriangle, Loader2, ClipboardList, Settings,
-  Trash2, Search, Download 
+  Trash2, Search, Download, CreditCard, Check, X, Clock 
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -50,6 +50,18 @@ interface UserPolla {
   teamsBonus?: number;
 }
 
+interface PaymentRequest {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  amount: number;
+  paymentMethod: 'nequi' | 'daviplata' | 'bancolombia';
+  referenceNumber: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Timestamp;
+}
+
 // Los 12 grupos del Mundial 2026
 const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 
@@ -78,6 +90,10 @@ export function AdminPanel() {
   const [isSeeding, setIsSeeding] = useState(false);
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [recalculateProgress, setRecalculateProgress] = useState('');
+  
+  // Estados para pagos
+  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
+  const [processingPayment, setProcessingPayment] = useState<string | null>(null);
   
   // Stats
   const [stats, setStats] = useState({
@@ -133,6 +149,29 @@ export function AdminPanel() {
       
       setUsers(usersList.sort((a, b) => b.totalPoints - a.totalPoints));
       
+      // Cargar solicitudes de pago
+      const paymentsSnap = await getDocs(
+        query(collection(db, 'paymentRequests'), orderBy('createdAt', 'desc'))
+      );
+      const paymentsList: PaymentRequest[] = [];
+
+      paymentsSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        paymentsList.push({
+          id: docSnap.id,
+          userId: data.userId,
+          userEmail: data.userEmail,
+          userName: data.userName || 'Sin nombre',
+          amount: data.amount,
+          paymentMethod: data.paymentMethod,
+          referenceNumber: data.referenceNumber,
+          status: data.status,
+          createdAt: data.createdAt,
+        });
+      });
+
+      setPaymentRequests(paymentsList);
+
       setStats({
         totalMatches: matchesSnap.size,
         playedMatches: played,
@@ -513,6 +552,72 @@ export function AdminPanel() {
     }
   };
 
+  const handleApprovePayment = async (request: PaymentRequest) => {
+    setProcessingPayment(request.id);
+  
+    try {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 365);
+      
+      // Crear suscripción activa
+      await setDoc(doc(db, 'subscriptions', request.userId), {
+        userId: request.userId,
+        status: 'active',
+        paymentMethod: request.paymentMethod,
+        transactionId: request.referenceNumber,
+        amount: request.amount,
+        currency: 'cop',
+        paidAt: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(expiresAt),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      
+      // Actualizar solicitud como aprobada
+      await updateDoc(doc(db, 'paymentRequests', request.id), {
+        status: 'approved',
+        processedAt: serverTimestamp(),
+      });
+      
+      // Actualizar estado local
+      setPaymentRequests(prev => prev.map(p => 
+        p.id === request.id ? { ...p, status: 'approved' as const } : p
+      ));
+      
+      alert(`Pago aprobado. Usuario ${request.userName} activado.`);
+      
+    } catch (error) {
+      console.error('Error aprobando pago:', error);
+      alert('Error al aprobar el pago');
+    } finally {
+      setProcessingPayment(null);
+    }
+  };
+
+  const handleRejectPayment = async (request: PaymentRequest) => {
+    const reason = window.prompt('Motivo del rechazo (opcional):');
+  
+    setProcessingPayment(request.id);
+  
+    try {
+      await updateDoc(doc(db, 'paymentRequests', request.id), {
+        status: 'rejected',
+        rejectionReason: reason || '',
+        processedAt: serverTimestamp(),
+      });
+      
+      setPaymentRequests(prev => prev.map(p => 
+        p.id === request.id ? { ...p, status: 'rejected' as const } : p
+      ));
+      
+    } catch (error) {
+      console.error('Error rechazando pago:', error);
+      alert('Error al rechazar el pago');
+    } finally {
+      setProcessingPayment(null);
+    }
+  };
+
   if (adminLoading || dataLoading) {
     return (
       <div className="flex h-[400px] items-center justify-center">
@@ -628,6 +733,15 @@ export function AdminPanel() {
           <TabsTrigger value="tools" className="px-5 py-2.5 rounded-xl data-[state=active]:bg-[#1E3A5F] data-[state=active]:text-white">
             <Settings className="size-4 mr-2" />
             Herramientas
+          </TabsTrigger>
+          <TabsTrigger value="payments" className="px-5 py-2.5 rounded-xl data-[state=active]:bg-[#1E3A5F] data-[state=active]:text-white">
+            <CreditCard className="size-4 mr-2" />
+            Pagos
+            {paymentRequests.filter(p => p.status === 'pending').length > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {paymentRequests.filter(p => p.status === 'pending').length}
+              </span>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -974,6 +1088,113 @@ export function AdminPanel() {
                 <Trash2 className="size-4 mr-2" />
                 Eliminar Todos los Partidos (Próximamente)
               </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Pagos */}
+        <TabsContent value="payments">
+          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+            <CardHeader className="bg-white border-b border-slate-100">
+              <CardTitle className="text-lg">
+                Solicitudes de Pago ({paymentRequests.filter(p => p.status === 'pending').length} pendientes)
+              </CardTitle>
+            </CardHeader>
+            
+            <CardContent className="p-0">
+              <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+                {paymentRequests.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500">
+                    No hay solicitudes de pago
+                  </div>
+                ) : (
+                  paymentRequests.map((request) => (
+                    <div 
+                      key={request.id} 
+                      className={`flex items-center gap-4 px-4 py-4 hover:bg-slate-50 ${
+                        request.status === 'approved' ? 'bg-green-50/50' :
+                        request.status === 'rejected' ? 'bg-red-50/50' : ''
+                      }`}
+                    >
+                      {/* Icono de estado */}
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        request.status === 'pending' ? 'bg-yellow-100' :
+                        request.status === 'approved' ? 'bg-green-100' :
+                        'bg-red-100'
+                      }`}>
+                        {request.status === 'pending' && <Clock className="size-5 text-yellow-600" />}
+                        {request.status === 'approved' && <Check className="size-5 text-green-600" />}
+                        {request.status === 'rejected' && <X className="size-5 text-red-600" />}
+                      </div>
+                      
+                      {/* Info del usuario */}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-slate-900">{request.userName}</p>
+                        <p className="text-sm text-slate-500">{request.userEmail}</p>
+                      </div>
+                      
+                      {/* Metodo de pago */}
+                      <div className="text-center">
+                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                          request.paymentMethod === 'nequi' ? 'bg-pink-100 text-pink-700' :
+                          request.paymentMethod === 'daviplata' ? 'bg-red-100 text-red-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {request.paymentMethod.charAt(0).toUpperCase() + request.paymentMethod.slice(1)}
+                        </span>
+                      </div>
+                      
+                      {/* Referencia */}
+                      <div className="text-right">
+                        <p className="font-mono text-sm text-slate-900">{request.referenceNumber}</p>
+                        <p className="text-xs text-slate-500">
+                          {request.createdAt?.toDate?.()?.toLocaleDateString('es-CO') || 'N/A'}
+                        </p>
+                      </div>
+                      
+                      {/* Monto */}
+                      <div className="text-right min-w-[100px]">
+                        <p className="font-bold text-slate-900">
+                          {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(request.amount)}
+                        </p>
+                      </div>
+                      
+                      {/* Acciones */}
+                      {request.status === 'pending' ? (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleApprovePayment(request)}
+                            disabled={processingPayment === request.id}
+                            className="h-9 bg-green-600 hover:bg-green-700 rounded-lg"
+                          >
+                            {processingPayment === request.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Check className="size-4" />
+                            )}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRejectPayment(request)}
+                            disabled={processingPayment === request.id}
+                            className="h-9 border-red-300 text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            <X className="size-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className={`text-sm font-medium ${
+                          request.status === 'approved' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {request.status === 'approved' ? 'Aprobado' : 'Rechazado'}
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

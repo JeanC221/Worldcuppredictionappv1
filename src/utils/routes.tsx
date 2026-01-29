@@ -11,6 +11,9 @@ import { AdminPanel } from '../components/AdminPanel';
 import { Profile } from '../components/Profile';
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import { RequiresPrediction } from '../components/RequiresPrediction';
+import PaymentProtectedRoute from '../components/PaymentProtectedRoute';
+import CheckoutPage from '../components/checkout/CheckoutPage';
+import PaymentSuccess from '../components/checkout/PaymentSuccess';
 
 export const router = createBrowserRouter([
   {
@@ -18,57 +21,87 @@ export const router = createBrowserRouter([
     element: <Login />,
   },
   {
-    path: '/dashboard',
+    path: '/checkout',
     element: (
       <ProtectedRoute>
         <Layout>
-          <Dashboard />
+          <CheckoutPage />
         </Layout>
       </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/payment/success',
+    element: (
+      <ProtectedRoute>
+        <Layout>
+          <PaymentSuccess />
+        </Layout>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/payment/response',
+    element: (
+      <ProtectedRoute>
+        <Layout>
+          <PaymentSuccess />
+        </Layout>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/dashboard',
+    element: (
+      <PaymentProtectedRoute>
+        <Layout>
+          <Dashboard />
+        </Layout>
+      </PaymentProtectedRoute>
     ),
   },
   {
     path: '/prediccion',
     element: (
-      <ProtectedRoute>
+      <PaymentProtectedRoute>
         <Layout>
           <PredictionForm />
         </Layout>
-      </ProtectedRoute>
+      </PaymentProtectedRoute>
     ),
   },
   {
     path: '/mi-polla',
     element: (
-      <ProtectedRoute>
+      <PaymentProtectedRoute>
         <Layout>
           <MyPrediction />
         </Layout>
-      </ProtectedRoute>
+      </PaymentProtectedRoute>
     ),
   },
   {
     path: '/ranking',
     element: (
-      <ProtectedRoute>
+      <PaymentProtectedRoute>
         <Layout>
           <RequiresPrediction>
             <Ranking />
           </RequiresPrediction>
         </Layout>
-      </ProtectedRoute>
+      </PaymentProtectedRoute>
     ),
   },
   {
     path: '/comunidad',
     element: (
-      <ProtectedRoute>
+      <PaymentProtectedRoute>
         <Layout>
           <RequiresPrediction>
             <Community />
           </RequiresPrediction>
         </Layout>
-      </ProtectedRoute>
+      </PaymentProtectedRoute>
     ),
   },
   {
