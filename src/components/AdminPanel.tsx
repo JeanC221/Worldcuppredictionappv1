@@ -8,22 +8,9 @@ import { groupFixtures } from '../utils/mockData';
 import { Match, PhaseScore } from '../utils/types';
 import { useAdmin } from '../hooks/useAdmin';
 import { 
-  Shield, Database, Trophy, Users, RefreshCw, Save, 
-  CheckCircle, AlertTriangle, Loader2, ClipboardList, Settings,
-  Trash2, Search, Download, CreditCard, Check, X, Clock 
+  Loader2, Trash2, Search, Download, Check, X, 
+  ChevronDown, ChevronUp, RefreshCw, Database, Users, Trophy
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
 import { broadcastNotification, createNotification } from '../hooks/useNotifications';
 import { TeamDisplay } from './TeamDisplay';
 import { generatePollaPDF } from '../utils/pdfGenerator';
@@ -62,8 +49,13 @@ interface PaymentRequest {
   createdAt: Timestamp;
 }
 
-// Los 12 grupos del Mundial 2026
 const GROUPS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
+const TABS = [
+  { id: 'matches', label: 'Resultados' },
+  { id: 'users', label: 'Usuarios' },
+  { id: 'payments', label: 'Pagos' },
+  { id: 'tools', label: 'Herramientas' },
+];
 
 export function AdminPanel() {
   const navigate = useNavigate();
@@ -100,7 +92,7 @@ export function AdminPanel() {
     totalMatches: 0,
     playedMatches: 0,
     totalUsers: 0,
-    totalPredictions: 0
+    pendingPayments: 0
   });
 
   useEffect(() => {
@@ -113,7 +105,6 @@ export function AdminPanel() {
 
   const fetchData = async () => {
     try {
-      // Cargar partidos
       const matchesSnap = await getDocs(query(collection(db, 'partidos'), orderBy('group'), orderBy('date')));
       const matchesList: MatchWithScore[] = [];
       let played = 0;
@@ -122,14 +113,11 @@ export function AdminPanel() {
         const data = docSnap.data() as MatchWithScore;
         const match = { ...data, id: docSnap.id };
         matchesList.push(match);
-        if (match.score1 !== null && match.score1 !== undefined) {
-          played++;
-        }
+        if (match.score1 !== null && match.score1 !== undefined) played++;
       });
       
       setAllMatches(matchesList);
       
-      // Cargar usuarios con pollas
       const usersSnap = await getDocs(collection(db, 'polla_completa'));
       const usersList: UserPolla[] = [];
       
@@ -149,10 +137,7 @@ export function AdminPanel() {
       
       setUsers(usersList.sort((a, b) => b.totalPoints - a.totalPoints));
       
-      // Cargar solicitudes de pago
-      const paymentsSnap = await getDocs(
-        query(collection(db, 'paymentRequests'), orderBy('createdAt', 'desc'))
-      );
+      const paymentsSnap = await getDocs(query(collection(db, 'paymentRequests'), orderBy('createdAt', 'desc')));
       const paymentsList: PaymentRequest[] = [];
 
       paymentsSnap.forEach((docSnap) => {
@@ -176,7 +161,7 @@ export function AdminPanel() {
         totalMatches: matchesSnap.size,
         playedMatches: played,
         totalUsers: usersSnap.size,
-        totalPredictions: usersSnap.size
+        pendingPayments: paymentsList.filter(p => p.status === 'pending').length
       });
       
     } catch (error) {
@@ -225,7 +210,6 @@ export function AdminPanel() {
         return newState;
       });
 
-      // Notificaciones si hay resultado
       if (score1 !== undefined && score2 !== undefined && matchData) {
         const pollasSnap = await getDocs(collection(db, 'polla_completa'));
         const allUserIds: string[] = [];
@@ -234,7 +218,6 @@ export function AdminPanel() {
           const userId = pollaDoc.data().userId;
           allUserIds.push(userId);
           
-          // Buscar predicción en el nuevo sistema (phases) o el anterior (groupPredictions)
           const data = pollaDoc.data();
           let userPred = null;
           
@@ -280,7 +263,7 @@ export function AdminPanel() {
     try {
       await deleteDoc(doc(db, 'polla_completa', userToDelete.docId));
       setUsers(prev => prev.filter(u => u.docId !== userToDelete.docId));
-      setStats(prev => ({ ...prev, totalUsers: prev.totalUsers - 1, totalPredictions: prev.totalPredictions - 1 }));
+      setStats(prev => ({ ...prev, totalUsers: prev.totalUsers - 1 }));
       setShowDeleteDialog(false);
       setUserToDelete(null);
     } catch (error) {
@@ -292,10 +275,7 @@ export function AdminPanel() {
   };
 
   const handleSeedDatabase = async () => {
-    const confirm = window.confirm(
-      `¿Estás seguro? Esto creará ${groupFixtures.reduce((acc, g) => acc + g.matches.length, 0)} partidos en Firebase.`
-    );
-    if (!confirm) return;
+    if (!window.confirm(`¿Crear ${groupFixtures.reduce((acc, g) => acc + g.matches.length, 0)} partidos?`)) return;
     
     setIsSeeding(true);
     setSeedingStatus('Iniciando...');
@@ -320,7 +300,7 @@ export function AdminPanel() {
       });
       
       await batch.commit();
-      setSeedingStatus(`${count} partidos creados`);
+      setSeedingStatus(`✓ ${count} partidos creados`);
       await fetchData();
       
     } catch (error: any) {
@@ -335,26 +315,20 @@ export function AdminPanel() {
     setRecalculateProgress('Cargando datos...');
     
     try {
-      // Obtener todos los partidos
       const matchesSnap = await getDocs(collection(db, 'partidos'));
       const allMatchesData: Match[] = matchesSnap.docs.map(docSnap => ({
         id: docSnap.id,
         ...docSnap.data()
       })) as Match[];
       
-      // Separar partidos por grupo para fase de grupos
       const groupMatches = allMatchesData.filter(m => !m.phase || m.phase === 'groups');
       
-      // Agrupar partidos por grupo para getTeamsAdvancingFromGroups
       const matchesByGroup: { [group: string]: Match[] } = {};
       for (const match of groupMatches) {
-        if (!matchesByGroup[match.group]) {
-          matchesByGroup[match.group] = [];
-        }
+        if (!matchesByGroup[match.group]) matchesByGroup[match.group] = [];
         matchesByGroup[match.group].push(match);
       }
       
-      // Crear predicciones "reales" basadas en resultados actuales para calcular equipos que avanzaron
       const realPredictions: { [matchId: string]: { score1: number; score2: number } } = {};
       for (const match of groupMatches) {
         if (match.score1 !== undefined && match.score1 !== null && 
@@ -363,12 +337,10 @@ export function AdminPanel() {
         }
       }
       
-      // Calcular equipos que realmente avanzaron (basado en resultados reales)
       const actualTeamsAdvancing = getTeamsAdvancingFromGroups(realPredictions, matchesByGroup);
       
       setRecalculateProgress('Recalculando usuarios...');
       
-      // Recalcular puntos de cada usuario
       const pollasSnap = await getDocs(collection(db, 'polla_completa'));
       const batch = writeBatch(db);
       let processedCount = 0;
@@ -376,12 +348,9 @@ export function AdminPanel() {
       for (const pollaDoc of pollasSnap.docs) {
         const data = pollaDoc.data();
         
-        // Determinar qué sistema usa el usuario
         if (data.phases) {
-          // Nuevo sistema de fases
           const phaseScores: { [key in TournamentPhase]?: PhaseScore } = {};
           
-          // Calcular puntuación para fase de grupos
           if (data.phases.groups) {
             const userGroupPredictions = data.phases.groups.matchPredictions || {};
             const userTeamsAdvancing = data.phases.groups.teamsAdvancing || [];
@@ -397,9 +366,6 @@ export function AdminPanel() {
             phaseScores['groups'] = groupScore;
           }
           
-          // TODO: Agregar cálculo para otras fases (r32, r16, qf, sf, final) cuando se implementen
-          
-          // Calcular totales
           const totals = calculateTotalScore(phaseScores);
           
           batch.update(doc(db, 'polla_completa', pollaDoc.id), {
@@ -411,7 +377,6 @@ export function AdminPanel() {
           });
           
         } else {
-          // Sistema anterior (groupPredictions directo)
           const predictions = data.groupPredictions || {};
           
           const predictionMap: { [matchId: string]: { score1: number; score2: number } } = {};
@@ -433,7 +398,7 @@ export function AdminPanel() {
         }
         
         processedCount++;
-        setRecalculateProgress(`Procesando ${processedCount}/${pollasSnap.size} usuarios...`);
+        setRecalculateProgress(`${processedCount}/${pollasSnap.size} usuarios...`);
       }
 
       await batch.commit();
@@ -463,7 +428,6 @@ export function AdminPanel() {
 
       const pollaData = pollaDoc.data();
       
-      // Preparar datos para el PDF - compatible con ambos sistemas
       const pdfData = {
         userName: user.userName,
         email: user.email,
@@ -472,14 +436,12 @@ export function AdminPanel() {
         exactMatches: pollaData.totalExactMatches || pollaData.exactMatches || 0,
         correctWinners: pollaData.totalCorrectWinners || pollaData.correctWinners || 0,
         teamsBonus: pollaData.totalTeamsBonus || 0,
-        // Compatible con ambos sistemas
         groupPredictions: pollaData.phases?.groups?.matchPredictions || pollaData.groupPredictions || {},
         teamsAdvancing: pollaData.phases?.groups?.teamsAdvancing || [],
         knockoutPredictions: pollaData.knockoutPredictions || {},
         knockoutPicks: pollaData.knockoutPicks || {}
       };
 
-      // Convertir allMatches al formato esperado
       const matchesInfo = allMatches.map(m => ({
         id: m.id,
         team1: m.team1,
@@ -500,58 +462,6 @@ export function AdminPanel() {
     }
   };
 
-  const handleDownloadAllPollas = async () => {
-    const confirm = window.confirm(
-      `¿Descargar ${users.length} PDFs? Se generará un PDF por cada usuario.`
-    );
-    if (!confirm) return;
-
-    try {
-      const pollasSnap = await getDocs(collection(db, 'polla_completa'));
-      
-      const matchesInfo = allMatches.map(m => ({
-        id: m.id,
-        team1: m.team1,
-        team2: m.team2,
-        group: m.group,
-        date: m.date,
-        score1: m.score1,
-        score2: m.score2
-      }));
-
-      let count = 0;
-      for (const docSnap of pollasSnap.docs) {
-        const data = docSnap.data();
-        
-        const pdfData = {
-          userName: data.userName || 'Sin nombre',
-          email: data.userEmail || '',
-          submittedAt: data.submittedAt?.toDate?.()?.toLocaleDateString('es-ES') || 'N/A',
-          totalPoints: data.totalPoints || 0,
-          exactMatches: data.totalExactMatches || data.exactMatches || 0,
-          correctWinners: data.totalCorrectWinners || data.correctWinners || 0,
-          teamsBonus: data.totalTeamsBonus || 0,
-          groupPredictions: data.phases?.groups?.matchPredictions || data.groupPredictions || {},
-          teamsAdvancing: data.phases?.groups?.teamsAdvancing || [],
-          knockoutPredictions: data.knockoutPredictions || {},
-          knockoutPicks: data.knockoutPicks || {}
-        };
-
-        await generatePollaPDF(pdfData, matchesInfo);
-        count++;
-        
-        // Pequeña pausa entre descargas
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
-
-      alert(`${count} PDFs generados exitosamente`);
-      
-    } catch (error) {
-      console.error('Error generando PDFs:', error);
-      alert('Error al generar PDFs');
-    }
-  };
-
   const handleApprovePayment = async (request: PaymentRequest) => {
     setProcessingPayment(request.id);
   
@@ -559,7 +469,6 @@ export function AdminPanel() {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 365);
       
-      // Crear suscripción activa
       await setDoc(doc(db, 'subscriptions', request.userId), {
         userId: request.userId,
         status: 'active',
@@ -573,18 +482,16 @@ export function AdminPanel() {
         updatedAt: serverTimestamp(),
       });
       
-      // Actualizar solicitud como aprobada
       await updateDoc(doc(db, 'paymentRequests', request.id), {
         status: 'approved',
         processedAt: serverTimestamp(),
       });
       
-      // Actualizar estado local
       setPaymentRequests(prev => prev.map(p => 
         p.id === request.id ? { ...p, status: 'approved' as const } : p
       ));
       
-      alert(`Pago aprobado. Usuario ${request.userName} activado.`);
+      setStats(prev => ({ ...prev, pendingPayments: prev.pendingPayments - 1 }));
       
     } catch (error) {
       console.error('Error aprobando pago:', error);
@@ -595,20 +502,19 @@ export function AdminPanel() {
   };
 
   const handleRejectPayment = async (request: PaymentRequest) => {
-    const reason = window.prompt('Motivo del rechazo (opcional):');
-  
     setProcessingPayment(request.id);
   
     try {
       await updateDoc(doc(db, 'paymentRequests', request.id), {
         status: 'rejected',
-        rejectionReason: reason || '',
         processedAt: serverTimestamp(),
       });
       
       setPaymentRequests(prev => prev.map(p => 
         p.id === request.id ? { ...p, status: 'rejected' as const } : p
       ));
+      
+      setStats(prev => ({ ...prev, pendingPayments: prev.pendingPayments - 1 }));
       
     } catch (error) {
       console.error('Error rechazando pago:', error);
@@ -618,613 +524,480 @@ export function AdminPanel() {
     }
   };
 
+  // Loading
   if (adminLoading || dataLoading) {
     return (
-      <div className="flex h-[400px] items-center justify-center">
-        <Loader2 className="size-10 animate-spin text-[#1E3A5F]" />
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="size-6 animate-spin text-[#999]" />
       </div>
     );
   }
 
+  // No admin
   if (!isAdmin) {
     return (
-      <div className="max-w-2xl mx-auto py-20 text-center">
-        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Shield className="size-10 text-red-500" />
+      <div className="max-w-md mx-auto text-center py-16">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <X className="size-8 text-red-500" />
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-2">Acceso Denegado</h1>
-        <p className="text-slate-600 mb-6">No tienes permisos de administrador.</p>
-        <Button onClick={() => navigate('/dashboard')} variant="outline">
-          Volver al Dashboard
-        </Button>
+        <h1 className="text-2xl font-bold text-[#1a1a1a] mb-2">Acceso Denegado</h1>
+        <p className="text-[#666] mb-6">No tienes permisos de administrador.</p>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="px-6 py-3 border border-[#e0e0e0] text-[#1a1a1a] font-medium rounded-xl hover:bg-[#f5f5f5] transition-colors"
+        >
+          Volver al inicio
+        </button>
       </div>
     );
   }
 
-  // Filtrar partidos por grupo seleccionado
   const filteredMatches = allMatches.filter(m => m.group === selectedGroup);
-
-  // Filtrar usuarios
   const filteredUsers = users.filter(u => 
     u.userName.toLowerCase().includes(userSearch.toLowerCase()) ||
     u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
 
   return (
-    <div className="max-w-7xl mx-auto pb-10">
+    <div className="max-w-5xl mx-auto">
       {/* Header */}
-      <div className="mb-8 flex items-center gap-4">
-        <div className="w-14 h-14 bg-gradient-to-br from-[#E85D24] to-[#C44D1A] rounded-2xl flex items-center justify-center shadow-lg">
-          <Shield className="size-7 text-white" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Panel de Administración</h1>
-          <p className="text-slate-500">Gestiona partidos, usuarios y configuración</p>
-        </div>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-[#1a1a1a] mb-1">Administración</h1>
+        <p className="text-[#666]">Gestiona partidos, usuarios y pagos</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Card className="border-0 shadow-md bg-white rounded-2xl">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Total Partidos</p>
-                <p className="text-3xl font-bold text-slate-900">{stats.totalMatches}</p>
-              </div>
-              <div className="w-12 h-12 bg-[#1E3A5F]/10 rounded-xl flex items-center justify-center">
-                <Trophy className="size-6 text-[#1E3A5F]" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-md bg-white rounded-2xl">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Jugados</p>
-                <p className="text-3xl font-bold text-emerald-600">{stats.playedMatches}</p>
-              </div>
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center">
-                <CheckCircle className="size-6 text-emerald-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-md bg-white rounded-2xl">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Usuarios</p>
-                <p className="text-3xl font-bold text-[#1E3A5F]">{stats.totalUsers}</p>
-              </div>
-              <div className="w-12 h-12 bg-[#1E3A5F]/10 rounded-xl flex items-center justify-center">
-                <Users className="size-6 text-[#1E3A5F]" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-md bg-white rounded-2xl">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Predicciones</p>
-                <p className="text-3xl font-bold text-[#D4A824]">{stats.totalPredictions}</p>
-              </div>
-              <div className="w-12 h-12 bg-[#D4A824]/10 rounded-xl flex items-center justify-center">
-                <Database className="size-6 text-[#D4A824]" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        <div className="bg-white border border-[#eee] rounded-xl p-4">
+          <p className="text-sm text-[#999] mb-1">Partidos</p>
+          <p className="text-2xl font-bold text-[#1a1a1a]">{stats.playedMatches}/{stats.totalMatches}</p>
+        </div>
+        <div className="bg-white border border-[#eee] rounded-xl p-4">
+          <p className="text-sm text-[#999] mb-1">Usuarios</p>
+          <p className="text-2xl font-bold text-[#1a1a1a]">{stats.totalUsers}</p>
+        </div>
+        <div className="bg-white border border-[#eee] rounded-xl p-4">
+          <p className="text-sm text-[#999] mb-1">Pagos pendientes</p>
+          <p className="text-2xl font-bold text-[#E85D24]">{stats.pendingPayments}</p>
+        </div>
+        <div className="bg-white border border-[#eee] rounded-xl p-4">
+          <p className="text-sm text-[#999] mb-1">Progreso</p>
+          <p className="text-2xl font-bold text-green-600">
+            {Math.round((stats.playedMatches / stats.totalMatches) * 100) || 0}%
+          </p>
+        </div>
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 bg-slate-100 p-1.5 rounded-2xl h-auto flex-wrap">
-          <TabsTrigger value="matches" className="px-5 py-2.5 rounded-xl data-[state=active]:bg-[#1E3A5F] data-[state=active]:text-white">
-            <ClipboardList className="size-4 mr-2" />
-            Resultados
-          </TabsTrigger>
-          <TabsTrigger value="users" className="px-5 py-2.5 rounded-xl data-[state=active]:bg-[#1E3A5F] data-[state=active]:text-white">
-            <Users className="size-4 mr-2" />
-            Usuarios
-          </TabsTrigger>
-          <TabsTrigger value="tools" className="px-5 py-2.5 rounded-xl data-[state=active]:bg-[#1E3A5F] data-[state=active]:text-white">
-            <Settings className="size-4 mr-2" />
-            Herramientas
-          </TabsTrigger>
-          <TabsTrigger value="payments" className="px-5 py-2.5 rounded-xl data-[state=active]:bg-[#1E3A5F] data-[state=active]:text-white">
-            <CreditCard className="size-4 mr-2" />
-            Pagos
-            {paymentRequests.filter(p => p.status === 'pending').length > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                {paymentRequests.filter(p => p.status === 'pending').length}
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
+              activeTab === tab.id
+                ? 'bg-[#1a1a1a] text-white'
+                : 'bg-white border border-[#eee] text-[#666] hover:bg-[#f5f5f5]'
+            }`}
+          >
+            {tab.label}
+            {tab.id === 'payments' && stats.pendingPayments > 0 && (
+              <span className="ml-2 px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                {stats.pendingPayments}
               </span>
             )}
-          </TabsTrigger>
-        </TabsList>
+          </button>
+        ))}
+      </div>
 
-        {/* Tab: Resultados */}
-        <TabsContent value="matches">
-          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-white border-b border-slate-100 pb-4">
-              <div className="flex flex-col gap-4">
-                <CardTitle className="text-lg">Ingresar Resultados - Fase de Grupos</CardTitle>
+      {/* Tab: Resultados */}
+      {activeTab === 'matches' && (
+        <div className="bg-white border border-[#eee] rounded-xl overflow-hidden">
+          {/* Selector de grupos */}
+          <div className="p-4 border-b border-[#eee]">
+            <p className="text-sm text-[#999] mb-3">Selecciona un grupo</p>
+            <div className="grid grid-cols-6 sm:grid-cols-12 gap-2">
+              {GROUPS.map(group => {
+                const groupMatches = allMatches.filter(m => m.group === group);
+                const playedInGroup = groupMatches.filter(m => m.score1 !== null && m.score1 !== undefined).length;
+                const isComplete = playedInGroup === groupMatches.length && groupMatches.length > 0;
                 
-                {/* Selector de 12 grupos como grid de cuadrados */}
-                <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
-                  {GROUPS.map(group => {
-                    const groupMatches = allMatches.filter(m => m.group === group);
-                    const playedInGroup = groupMatches.filter(m => m.score1 !== null && m.score1 !== undefined).length;
-                    const isComplete = playedInGroup === groupMatches.length && groupMatches.length > 0;
-                    
-                    return (
-                      <button
-                        key={group}
-                        onClick={() => setSelectedGroup(group)}
-                        className={`
-                          aspect-square rounded-xl flex flex-col items-center justify-center
-                          transition-all duration-200 font-bold text-lg
-                          ${selectedGroup === group
-                            ? 'bg-[#1E3A5F] text-white shadow-lg scale-105'
-                            : isComplete
-                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }
-                        `}
-                      >
-                        <span>{group}</span>
-                        <span className="text-[10px] font-normal opacity-75">
-                          {playedInGroup}/{groupMatches.length}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </CardHeader>
-            
-            <CardContent className="p-0">
-              <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-                {filteredMatches.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500">
-                    No hay partidos en el Grupo {selectedGroup}
-                  </div>
-                ) : (
-                  filteredMatches.map((match) => {
-                    const isEditing = editedScores[match.id] !== undefined;
-                    const currentScore1 = isEditing ? editedScores[match.id].score1 : (match.score1?.toString() ?? '');
-                    const currentScore2 = isEditing ? editedScores[match.id].score2 : (match.score2?.toString() ?? '');
-                    const hasResult = match.score1 !== null && match.score1 !== undefined;
-                    
-                    return (
-                      <div 
-                        key={match.id}
-                        className={`flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${
-                          hasResult ? 'bg-emerald-50/50' : ''
-                        }`}
-                      >
-                        {/* Grupo badge */}
-                        <div className="w-8 h-8 bg-[#1E3A5F] rounded-lg flex items-center justify-center flex-shrink-0">
-                          <span className="text-white text-xs font-bold">{match.group}</span>
-                        </div>
-                        
-                        {/* Equipos y scores */}
-                        <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
-                          <TeamDisplay team={match.team1} reverse className="flex-1 justify-end text-sm font-medium text-slate-700" flagSize="sm" />
-                          
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="text"
-                              inputMode="numeric"
-                              maxLength={2}
-                              value={currentScore1}
-                              onChange={(e) => setEditedScores(prev => ({
-                                ...prev,
-                                [match.id]: { 
-                                  score1: e.target.value, 
-                                  score2: prev[match.id]?.score2 ?? match.score2?.toString() ?? '' 
-                                }
-                              }))}
-                              className="w-12 h-9 text-center font-bold rounded-lg border-2"
-                              placeholder="-"
-                            />
-                            <span className="text-slate-400 font-medium">-</span>
-                            <Input
-                              type="text"
-                              inputMode="numeric"
-                              maxLength={2}
-                              value={currentScore2}
-                              onChange={(e) => setEditedScores(prev => ({
-                                ...prev,
-                                [match.id]: { 
-                                  score1: prev[match.id]?.score1 ?? match.score1?.toString() ?? '', 
-                                  score2: e.target.value 
-                                }
-                              }))}
-                              className="w-12 h-9 text-center font-bold rounded-lg border-2"
-                              placeholder="-"
-                            />
-                          </div>
-                          
-                          <TeamDisplay team={match.team2} className="flex-1 justify-start text-sm font-medium text-slate-700" flagSize="sm" />
-                        </div>
-                        
-                        {/* Botón guardar */}
-                        <Button
-                          size="sm"
-                          disabled={!isEditing || savingMatch === match.id}
-                          onClick={() => handleSaveScore(match.id)}
-                          className={`h-9 w-9 p-0 rounded-lg ${
-                            isEditing ? 'bg-[#E85D24] hover:bg-[#C44D1A]' : 'bg-slate-200'
-                          }`}
-                        >
-                          {savingMatch === match.id ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Save className="size-4" />
-                          )}
-                        </Button>
-                        
-                        {/* Indicador de completado */}
-                        {hasResult && (
-                          <CheckCircle className="size-5 text-emerald-500 flex-shrink-0" />
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab: Usuarios */}
-        <TabsContent value="users">
-          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-white border-b border-slate-100">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <CardTitle className="text-lg">Usuarios con Polla ({users.length})</CardTitle>
-                
-                <div className="flex items-center gap-3">
-                  {/* Download All Button */}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleDownloadAllPollas}
-                    className="h-9 rounded-xl border-[#1E3A5F] text-[#1E3A5F] hover:bg-[#1E3A5F]/5"
+                return (
+                  <button
+                    key={group}
+                    onClick={() => setSelectedGroup(group)}
+                    className={`aspect-square rounded-lg flex flex-col items-center justify-center font-bold transition-colors ${
+                      selectedGroup === group
+                        ? 'bg-[#1a1a1a] text-white'
+                        : isComplete
+                          ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                          : 'bg-[#f5f5f5] text-[#666] hover:bg-[#eee]'
+                    }`}
                   >
-                    <Download className="size-4 mr-2" />
-                    Descargar Todas
-                  </Button>
-                  
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                    <Input
-                      placeholder="Buscar usuario..."
-                      value={userSearch}
-                      onChange={(e) => setUserSearch(e.target.value)}
-                      className="pl-10 w-64 rounded-xl"
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-            
-            <CardContent className="p-0">
-              <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-                {filteredUsers.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500">
-                    No se encontraron usuarios
-                  </div>
-                ) : (
-                  filteredUsers.map((user, index) => (
-                    <div key={user.docId} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50">
-                      {/* Posición */}
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
-                        index === 0 ? 'bg-[#D4A824] text-white' :
-                        index === 1 ? 'bg-slate-400 text-white' :
-                        index === 2 ? 'bg-amber-700 text-white' :
-                        'bg-slate-100 text-slate-600'
-                      }`}>
-                        {index + 1}
-                      </div>
-                      
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-900 truncate">{user.userName}</p>
-                        <p className="text-xs text-slate-500 truncate">{user.email}</p>
-                      </div>
-                      
-                      {/* Puntos y stats */}
-                      <div className="text-right">
-                        <p className="font-bold text-[#E85D24]">{user.totalPoints} pts</p>
-                        <p className="text-xs text-slate-400">
-                          {user.exactMatches || 0}E | {user.correctWinners || 0}G | {user.teamsBonus || 0}B
-                        </p>
-                      </div>
-                      
-                      {/* Acciones */}
-                      <div className="flex items-center gap-2">
-                        {/* Download Button */}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-8 p-0 rounded-lg border-[#1E3A5F]/30 text-[#1E3A5F] hover:bg-[#1E3A5F]/10"
-                          onClick={() => handleDownloadPolla(user)}
-                          disabled={downloadingUser === user.docId}
-                        >
-                          {downloadingUser === user.docId ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : (
-                            <Download className="size-4" />
-                          )}
-                        </Button>
-                        
-                        {/* Delete Button */}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 w-8 p-0 rounded-lg border-red-200 text-red-500 hover:bg-red-50 hover:border-red-300"
-                          onClick={() => {
-                            setUserToDelete(user);
-                            setShowDeleteDialog(true);
-                          }}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab: Herramientas */}
-        <TabsContent value="tools" className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Inicializar BD */}
-            <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] text-white py-4">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Database className="size-5" />
-                  Inicializar Partidos
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 space-y-4">
-                <p className="text-sm text-slate-600">
-                  Crea los 72 partidos de fase de grupos del Mundial 2026.
-                </p>
-                <Button 
-                  onClick={handleSeedDatabase}
-                  disabled={isSeeding}
-                  className="w-full bg-[#E85D24] hover:bg-[#C44D1A] rounded-xl"
-                >
-                  {isSeeding ? <Loader2 className="size-4 animate-spin mr-2" /> : <Database className="size-4 mr-2" />}
-                  {isSeeding ? 'Creando...' : 'Crear Partidos'}
-                </Button>
-                {seedingStatus && (
-                  <p className={`text-sm ${seedingStatus.includes('Error') ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {seedingStatus}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Recalcular Rankings */}
-            <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-emerald-600 to-emerald-500 text-white py-4">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <RefreshCw className="size-5" />
-                  Recalcular Rankings
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 space-y-4">
-                <p className="text-sm text-slate-600">
-                  Recalcula puntos de todos los usuarios incluyendo bonus por equipos que avanzan (+{SCORING.TEAM_ADVANCED} pts c/u).
-                </p>
-                <Button 
-                  onClick={handleRecalculateRankings}
-                  disabled={isRecalculating}
-                  variant="outline"
-                  className="w-full border-2 border-emerald-500 text-emerald-600 hover:bg-emerald-50 rounded-xl"
-                >
-                  {isRecalculating ? <Loader2 className="size-4 animate-spin mr-2" /> : <RefreshCw className="size-4 mr-2" />}
-                  {isRecalculating ? 'Calculando...' : 'Recalcular'}
-                </Button>
-                {recalculateProgress && (
-                  <p className="text-sm text-[#1E3A5F]">{recalculateProgress}</p>
-                )}
-              </CardContent>
-            </Card>
+                    <span>{group}</span>
+                    <span className="text-[10px] font-normal opacity-75">
+                      {playedInGroup}/{groupMatches.length}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Info de puntuación */}
-          <Card className="border-0 shadow-md rounded-2xl overflow-hidden">
-            <CardHeader className="bg-[#D4A824]/10 py-4">
-              <CardTitle className="flex items-center gap-2 text-base text-[#D4A824]">
-                <Trophy className="size-5" />
-                Sistema de Puntuación
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-5">
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-emerald-50 rounded-xl">
-                  <div className="text-3xl font-bold text-emerald-600">+{SCORING.EXACT_MATCH}</div>
-                  <div className="text-sm text-slate-600">Marcador Exacto</div>
-                </div>
-                <div className="text-center p-4 bg-[#1E3A5F]/10 rounded-xl">
-                  <div className="text-3xl font-bold text-[#1E3A5F]">+{SCORING.CORRECT_WINNER}</div>
-                  <div className="text-sm text-slate-600">Ganador Correcto</div>
-                </div>
-                <div className="text-center p-4 bg-[#D4A824]/10 rounded-xl">
-                  <div className="text-3xl font-bold text-[#D4A824]">+{SCORING.TEAM_ADVANCED}</div>
-                  <div className="text-sm text-slate-600">Equipo que Avanza</div>
-                </div>
+          {/* Lista de partidos */}
+          <div className="divide-y divide-[#eee] max-h-[500px] overflow-y-auto">
+            {filteredMatches.length === 0 ? (
+              <div className="p-8 text-center text-[#999]">
+                No hay partidos en el Grupo {selectedGroup}
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Zona de peligro */}
-          <Card className="border-2 border-red-200 shadow-md rounded-2xl overflow-hidden">
-            <CardHeader className="bg-red-50 py-4">
-              <CardTitle className="flex items-center gap-2 text-base text-red-700">
-                <AlertTriangle className="size-5" />
-                Zona de Peligro
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-5">
-              <p className="text-sm text-slate-600 mb-4">
-                Acciones irreversibles. Usar con precaución.
-              </p>
-              <Button 
-                variant="outline"
-                disabled
-                className="border-red-300 text-red-500 rounded-xl"
-              >
-                <Trash2 className="size-4 mr-2" />
-                Eliminar Todos los Partidos (Próximamente)
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab: Pagos */}
-        <TabsContent value="payments">
-          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-            <CardHeader className="bg-white border-b border-slate-100">
-              <CardTitle className="text-lg">
-                Solicitudes de Pago ({paymentRequests.filter(p => p.status === 'pending').length} pendientes)
-              </CardTitle>
-            </CardHeader>
-            
-            <CardContent className="p-0">
-              <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-                {paymentRequests.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500">
-                    No hay solicitudes de pago
-                  </div>
-                ) : (
-                  paymentRequests.map((request) => (
-                    <div 
-                      key={request.id} 
-                      className={`flex items-center gap-4 px-4 py-4 hover:bg-slate-50 ${
-                        request.status === 'approved' ? 'bg-green-50/50' :
-                        request.status === 'rejected' ? 'bg-red-50/50' : ''
+            ) : (
+              filteredMatches.map((match) => {
+                const isEditing = editedScores[match.id] !== undefined;
+                const currentScore1 = isEditing ? editedScores[match.id].score1 : (match.score1?.toString() ?? '');
+                const currentScore2 = isEditing ? editedScores[match.id].score2 : (match.score2?.toString() ?? '');
+                const hasResult = match.score1 !== null && match.score1 !== undefined;
+                
+                return (
+                  <div 
+                    key={match.id}
+                    className={`flex items-center gap-3 px-4 py-3 ${hasResult ? 'bg-green-50' : ''}`}
+                  >
+                    {/* Equipos */}
+                    <div className="flex-1 flex items-center justify-end gap-2">
+                      <span className="text-sm font-medium text-[#1a1a1a] truncate">{match.team1}</span>
+                    </div>
+                    
+                    {/* Inputs */}
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={2}
+                        value={currentScore1}
+                        onChange={(e) => setEditedScores(prev => ({
+                          ...prev,
+                          [match.id]: { 
+                            score1: e.target.value, 
+                            score2: prev[match.id]?.score2 ?? match.score2?.toString() ?? '' 
+                          }
+                        }))}
+                        className="w-10 h-9 text-center font-mono font-bold border border-[#ddd] rounded-lg focus:outline-none focus:border-[#1a1a1a]"
+                        placeholder="-"
+                      />
+                      <span className="text-[#999]">:</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={2}
+                        value={currentScore2}
+                        onChange={(e) => setEditedScores(prev => ({
+                          ...prev,
+                          [match.id]: { 
+                            score1: prev[match.id]?.score1 ?? match.score1?.toString() ?? '', 
+                            score2: e.target.value 
+                          }
+                        }))}
+                        className="w-10 h-9 text-center font-mono font-bold border border-[#ddd] rounded-lg focus:outline-none focus:border-[#1a1a1a]"
+                        placeholder="-"
+                      />
+                    </div>
+                    
+                    {/* Equipo 2 */}
+                    <div className="flex-1 flex items-center gap-2">
+                      <span className="text-sm font-medium text-[#1a1a1a] truncate">{match.team2}</span>
+                    </div>
+                    
+                    {/* Guardar */}
+                    <button
+                      disabled={!isEditing || savingMatch === match.id}
+                      onClick={() => handleSaveScore(match.id)}
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                        isEditing 
+                          ? 'bg-[#1a1a1a] text-white hover:bg-[#333]' 
+                          : 'bg-[#eee] text-[#ccc] cursor-not-allowed'
                       }`}
                     >
-                      {/* Icono de estado */}
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        request.status === 'pending' ? 'bg-yellow-100' :
-                        request.status === 'approved' ? 'bg-green-100' :
-                        'bg-red-100'
-                      }`}>
-                        {request.status === 'pending' && <Clock className="size-5 text-yellow-600" />}
-                        {request.status === 'approved' && <Check className="size-5 text-green-600" />}
-                        {request.status === 'rejected' && <X className="size-5 text-red-600" />}
-                      </div>
-                      
-                      {/* Info del usuario */}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-900">{request.userName}</p>
-                        <p className="text-sm text-slate-500">{request.userEmail}</p>
-                      </div>
-                      
-                      {/* Metodo de pago */}
-                      <div className="text-center">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-                          request.paymentMethod === 'nequi' ? 'bg-pink-100 text-pink-700' :
-                          request.paymentMethod === 'daviplata' ? 'bg-red-100 text-red-700' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {request.paymentMethod.charAt(0).toUpperCase() + request.paymentMethod.slice(1)}
-                        </span>
-                      </div>
-                      
-                      {/* Referencia */}
-                      <div className="text-right">
-                        <p className="font-mono text-sm text-slate-900">{request.referenceNumber}</p>
-                        <p className="text-xs text-slate-500">
-                          {request.createdAt?.toDate?.()?.toLocaleDateString('es-CO') || 'N/A'}
-                        </p>
-                      </div>
-                      
-                      {/* Monto */}
-                      <div className="text-right min-w-[100px]">
-                        <p className="font-bold text-slate-900">
-                          {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(request.amount)}
-                        </p>
-                      </div>
-                      
-                      {/* Acciones */}
-                      {request.status === 'pending' ? (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleApprovePayment(request)}
-                            disabled={processingPayment === request.id}
-                            className="h-9 bg-green-600 hover:bg-green-700 rounded-lg"
-                          >
-                            {processingPayment === request.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Check className="size-4" />
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleRejectPayment(request)}
-                            disabled={processingPayment === request.id}
-                            className="h-9 border-red-300 text-red-600 hover:bg-red-50 rounded-lg"
-                          >
-                            <X className="size-4" />
-                          </Button>
-                        </div>
+                      {savingMatch === match.id ? (
+                        <Loader2 className="size-4 animate-spin" />
                       ) : (
-                        <span className={`text-sm font-medium ${
-                          request.status === 'approved' ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          {request.status === 'approved' ? 'Aprobado' : 'Rechazado'}
-                        </span>
+                        <Check className="size-4" />
                       )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                    </button>
+                    
+                    {hasResult && <Check className="size-4 text-green-500" />}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
 
-      {/* Dialog confirmar eliminación */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent className="rounded-2xl">
-          <DialogHeader>
-            <DialogTitle>¿Eliminar polla?</DialogTitle>
-            <DialogDescription>
-              Vas a eliminar la polla de <strong>{userToDelete?.userName}</strong>. 
-              Esta acción no se puede deshacer.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)} className="rounded-xl">
-              Cancelar
-            </Button>
-            <Button 
-              onClick={handleDeletePolla}
-              disabled={deletingUser !== null}
-              className="bg-red-500 hover:bg-red-600 rounded-xl"
+      {/* Tab: Usuarios */}
+      {activeTab === 'users' && (
+        <div className="bg-white border border-[#eee] rounded-xl overflow-hidden">
+          {/* Header */}
+          <div className="p-4 border-b border-[#eee] flex flex-col sm:flex-row gap-4 justify-between">
+            <p className="text-sm text-[#666]">{users.length} usuarios con predicción</p>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#999]" />
+              <input
+                type="text"
+                placeholder="Buscar..."
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                className="pl-9 pr-4 py-2 border border-[#e0e0e0] rounded-lg text-sm focus:outline-none focus:border-[#1a1a1a]"
+              />
+            </div>
+          </div>
+
+          {/* Lista */}
+          <div className="divide-y divide-[#eee] max-h-[500px] overflow-y-auto">
+            {filteredUsers.length === 0 ? (
+              <div className="p-8 text-center text-[#999]">No se encontraron usuarios</div>
+            ) : (
+              filteredUsers.map((user, index) => (
+                <div key={user.docId} className="flex items-center gap-4 px-4 py-3 hover:bg-[#fafafa]">
+                  {/* Posición */}
+                  <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
+                    index === 0 ? 'bg-yellow-400 text-white' :
+                    index === 1 ? 'bg-gray-400 text-white' :
+                    index === 2 ? 'bg-amber-600 text-white' :
+                    'bg-[#f5f5f5] text-[#666]'
+                  }`}>
+                    {index + 1}
+                  </span>
+                  
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-[#1a1a1a] truncate">{user.userName}</p>
+                    <p className="text-xs text-[#999] truncate">{user.email}</p>
+                  </div>
+                  
+                  {/* Stats */}
+                  <div className="text-right hidden sm:block">
+                    <p className="font-bold text-[#E85D24]">{user.totalPoints} pts</p>
+                    <p className="text-xs text-[#999]">
+                      {user.exactMatches}E · {user.correctWinners}G
+                    </p>
+                  </div>
+                  
+                  {/* Acciones */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleDownloadPolla(user)}
+                      disabled={downloadingUser === user.docId}
+                      className="w-8 h-8 rounded-lg border border-[#eee] flex items-center justify-center hover:bg-[#f5f5f5] transition-colors"
+                    >
+                      {downloadingUser === user.docId ? (
+                        <Loader2 className="size-4 animate-spin text-[#999]" />
+                      ) : (
+                        <Download className="size-4 text-[#666]" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setUserToDelete(user);
+                        setShowDeleteDialog(true);
+                      }}
+                      className="w-8 h-8 rounded-lg border border-red-200 flex items-center justify-center hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="size-4 text-red-500" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Pagos */}
+      {activeTab === 'payments' && (
+        <div className="bg-white border border-[#eee] rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-[#eee]">
+            <p className="text-sm text-[#666]">
+              {paymentRequests.filter(p => p.status === 'pending').length} pagos pendientes
+            </p>
+          </div>
+
+          <div className="divide-y divide-[#eee] max-h-[500px] overflow-y-auto">
+            {paymentRequests.length === 0 ? (
+              <div className="p-8 text-center text-[#999]">No hay solicitudes de pago</div>
+            ) : (
+              paymentRequests.map((request) => (
+                <div 
+                  key={request.id} 
+                  className={`flex items-center gap-4 px-4 py-4 ${
+                    request.status === 'approved' ? 'bg-green-50' :
+                    request.status === 'rejected' ? 'bg-red-50' : ''
+                  }`}
+                >
+                  {/* Estado */}
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    request.status === 'pending' ? 'bg-yellow-100' :
+                    request.status === 'approved' ? 'bg-green-100' :
+                    'bg-red-100'
+                  }`}>
+                    {request.status === 'pending' && <div className="w-2 h-2 rounded-full bg-yellow-500" />}
+                    {request.status === 'approved' && <Check className="size-5 text-green-600" />}
+                    {request.status === 'rejected' && <X className="size-5 text-red-500" />}
+                  </div>
+                  
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-[#1a1a1a]">{request.userName}</p>
+                    <p className="text-xs text-[#999]">{request.userEmail}</p>
+                  </div>
+                  
+                  {/* Método */}
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    request.paymentMethod === 'nequi' ? 'bg-pink-100 text-pink-700' :
+                    request.paymentMethod === 'daviplata' ? 'bg-red-100 text-red-700' :
+                    'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {request.paymentMethod}
+                  </span>
+                  
+                  {/* Referencia y monto */}
+                  <div className="text-right hidden sm:block">
+                    <p className="font-mono text-sm text-[#1a1a1a]">{request.referenceNumber}</p>
+                    <p className="text-xs text-[#999]">
+                      {new Intl.NumberFormat('es-CO', { 
+                        style: 'currency', 
+                        currency: 'COP', 
+                        minimumFractionDigits: 0 
+                      }).format(request.amount)}
+                    </p>
+                  </div>
+                  
+                  {/* Acciones */}
+                  {request.status === 'pending' ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApprovePayment(request)}
+                        disabled={processingPayment === request.id}
+                        className="w-9 h-9 rounded-lg bg-green-600 text-white flex items-center justify-center hover:bg-green-700 transition-colors"
+                      >
+                        {processingPayment === request.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Check className="size-4" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleRejectPayment(request)}
+                        disabled={processingPayment === request.id}
+                        className="w-9 h-9 rounded-lg border border-red-200 text-red-500 flex items-center justify-center hover:bg-red-50 transition-colors"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className={`text-sm font-medium ${
+                      request.status === 'approved' ? 'text-green-600' : 'text-red-500'
+                    }`}>
+                      {request.status === 'approved' ? 'Aprobado' : 'Rechazado'}
+                    </span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Herramientas */}
+      {activeTab === 'tools' && (
+        <div className="space-y-6">
+          {/* Crear partidos */}
+          <div className="bg-white border border-[#eee] rounded-xl p-6">
+            <h3 className="font-semibold text-[#1a1a1a] mb-2">Inicializar Partidos</h3>
+            <p className="text-sm text-[#666] mb-4">
+              Crea los 72 partidos de fase de grupos del Mundial 2026.
+            </p>
+            <button
+              onClick={handleSeedDatabase}
+              disabled={isSeeding}
+              className="px-4 py-2 bg-[#1a1a1a] text-white font-medium rounded-lg hover:bg-[#333] disabled:bg-[#ccc] transition-colors flex items-center gap-2"
             >
-              {deletingUser ? <Loader2 className="size-4 animate-spin mr-2" /> : <Trash2 className="size-4 mr-2" />}
-              Eliminar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {isSeeding ? <Loader2 className="size-4 animate-spin" /> : <Database className="size-4" />}
+              {isSeeding ? 'Creando...' : 'Crear Partidos'}
+            </button>
+            {seedingStatus && (
+              <p className={`mt-3 text-sm ${seedingStatus.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
+                {seedingStatus}
+              </p>
+            )}
+          </div>
+
+          {/* Recalcular */}
+          <div className="bg-white border border-[#eee] rounded-xl p-6">
+            <h3 className="font-semibold text-[#1a1a1a] mb-2">Recalcular Rankings</h3>
+            <p className="text-sm text-[#666] mb-4">
+              Recalcula puntos de todos los usuarios basado en resultados actuales.
+            </p>
+            <button
+              onClick={handleRecalculateRankings}
+              disabled={isRecalculating}
+              className="px-4 py-2 border border-[#1a1a1a] text-[#1a1a1a] font-medium rounded-lg hover:bg-[#f5f5f5] disabled:border-[#ccc] disabled:text-[#ccc] transition-colors flex items-center gap-2"
+            >
+              {isRecalculating ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              {isRecalculating ? 'Calculando...' : 'Recalcular'}
+            </button>
+            {recalculateProgress && (
+              <p className="mt-3 text-sm text-[#666]">{recalculateProgress}</p>
+            )}
+          </div>
+
+          {/* Sistema de puntos */}
+          <div className="bg-[#f9f9f9] rounded-xl p-6">
+            <h3 className="font-semibold text-[#1a1a1a] mb-4">Sistema de Puntuación</h3>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="bg-white rounded-lg p-4">
+                <p className="text-2xl font-bold text-green-600">+{SCORING.EXACT_MATCH}</p>
+                <p className="text-xs text-[#666]">Marcador exacto</p>
+              </div>
+              <div className="bg-white rounded-lg p-4">
+                <p className="text-2xl font-bold text-blue-600">+{SCORING.CORRECT_WINNER}</p>
+                <p className="text-xs text-[#666]">Ganador correcto</p>
+              </div>
+              <div className="bg-white rounded-lg p-4">
+                <p className="text-2xl font-bold text-[#E85D24]">+{SCORING.TEAM_ADVANCED}</p>
+                <p className="text-xs text-[#666]">Equipo avanza</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal eliminar usuario */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold text-[#1a1a1a] mb-2">¿Eliminar polla?</h3>
+            <p className="text-sm text-[#666] mb-6">
+              Vas a eliminar la polla de <strong>{userToDelete?.userName}</strong>. Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteDialog(false)}
+                className="flex-1 py-2 border border-[#e0e0e0] text-[#666] font-medium rounded-lg hover:bg-[#f5f5f5] transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeletePolla}
+                disabled={deletingUser !== null}
+                className="flex-1 py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 disabled:bg-red-300 transition-colors flex items-center justify-center gap-2"
+              >
+                {deletingUser ? <Loader2 className="size-4 animate-spin" /> : null}
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

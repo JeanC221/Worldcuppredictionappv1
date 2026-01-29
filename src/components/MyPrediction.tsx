@@ -3,88 +3,16 @@ import { db, auth } from '../lib/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Match, PhaseScore } from '../utils/types';
-import { PHASES, GROUPS, TournamentPhase } from '../utils/constants';
+import { PHASES, GROUPS } from '../utils/constants';
 import { calculateScore, calculateTeamsBonus } from '../utils/scoring';
-import { CheckCircle2, XCircle, Trophy, TrendingUp, Loader2, ClipboardList, Award, Users } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { PredictionForm } from './PredictionForm';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { TeamDisplay } from './TeamDisplay';
 
-interface MatchComparisonProps {
-  predicted: Match;
-  actual?: Match;
-}
-
-// Helper para verificar si un partido tiene resultado oficial
 function hasOfficialResult(match: Match | undefined): boolean {
   return !!(match && 
     match.score1 !== undefined && match.score1 !== null &&
     match.score2 !== undefined && match.score2 !== null);
-}
-
-function MatchComparison({ predicted, actual }: MatchComparisonProps) {
-  const getMatchResult = (match: Match): 'win1' | 'win2' | 'draw' | 'pending' => {
-    if (!hasOfficialResult(match)) return 'pending';
-    if (match.score1! > match.score2!) return 'win1';
-    if (match.score2! > match.score1!) return 'win2';
-    return 'draw';
-  };
-
-  const hasResult = hasOfficialResult(actual);
-  const isExactMatch = hasResult && predicted.score1 === actual!.score1 && predicted.score2 === actual!.score2;
-  const isCorrectWinner = hasResult && !isExactMatch && getMatchResult(predicted) === getMatchResult(actual!);
-  const isIncorrect = hasResult && !isExactMatch && !isCorrectWinner;
-
-  return (
-    <div className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-      isExactMatch ? 'bg-emerald-50 border-2 border-emerald-300' :
-      isCorrectWinner ? 'bg-[#1E3A5F]/5 border-2 border-[#1E3A5F]/30' :
-      isIncorrect ? 'bg-red-50 border-2 border-red-300' :
-      'bg-slate-50 border-2 border-slate-200'
-    }`}>
-      {/* Equipo 1 */}
-      <div className="flex-1 flex items-center justify-end gap-2">
-        <TeamDisplay team={predicted.team1} reverse className="text-slate-800 text-sm font-medium" flagSize="md" />
-      </div>
-
-      {/* Scores */}
-      <div className="flex flex-col items-center gap-1">
-        {/* Resultado Real */}
-        {hasResult && (
-          <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-200 rounded text-xs">
-            <span className="font-bold text-slate-600 w-3 text-center">{actual!.score1}</span>
-            <span className="text-slate-400">-</span>
-            <span className="font-bold text-slate-600 w-3 text-center">{actual!.score2}</span>
-          </div>
-        )}
-        {/* Predicción */}
-        <div className={`flex items-center gap-1 px-3 py-1.5 rounded-lg ${
-          isExactMatch ? 'bg-emerald-500 text-white' :
-          isCorrectWinner ? 'bg-[#1E3A5F] text-white' :
-          isIncorrect ? 'bg-red-500 text-white' :
-          'bg-white border-2 border-slate-300 text-slate-900'
-        }`}>
-          <span className="font-bold text-lg w-4 text-center">{predicted.score1}</span>
-          <span className="opacity-60">-</span>
-          <span className="font-bold text-lg w-4 text-center">{predicted.score2}</span>
-        </div>
-      </div>
-
-      {/* Equipo 2 */}
-      <div className="flex-1 flex items-center justify-start gap-2">
-        <TeamDisplay team={predicted.team2} className="text-slate-800 text-sm font-medium" flagSize="md" />
-      </div>
-
-      {/* Badge */}
-      <div className="w-12 text-right">
-        {hasResult ? (
-          isExactMatch ? <span className="text-emerald-600 text-xs font-bold">+5</span> :
-          isCorrectWinner ? <span className="text-[#1E3A5F] text-xs font-bold">+3</span> :
-          <span className="text-red-500 text-xs font-bold">0</span>
-        ) : <span className="text-slate-400 text-xs">--</span>}
-      </div>
-    </div>
-  );
 }
 
 export function MyPrediction() {
@@ -92,13 +20,12 @@ export function MyPrediction() {
   const [userPrediction, setUserPrediction] = useState<any>(null);
   const [actualMatchesMap, setActualMatchesMap] = useState<{ [key: string]: Match }>({});
   const [predictionsByGroup, setPredictionsByGroup] = useState<{ [group: string]: Match[] }>({});
-  const [selectedGroup, setSelectedGroup] = useState<string>('A');
+  const [expandedGroup, setExpandedGroup] = useState<string | null>('A');
   const [phaseScores, setPhaseScores] = useState<{ [key: string]: PhaseScore }>({});
 
   useEffect(() => {
     const fetchData = async (uid: string) => {
       try {
-        // Cargar partidos reales
         const querySnapshot = await getDocs(collection(db, 'partidos'));
         const matchesMap: { [key: string]: Match } = {};
         querySnapshot.forEach((docSnap) => {
@@ -106,7 +33,6 @@ export function MyPrediction() {
         });
         setActualMatchesMap(matchesMap);
 
-        // Cargar predicción del usuario
         const docRef = doc(db, 'polla_completa', uid);
         const docSnap = await getDoc(docRef);
 
@@ -114,7 +40,6 @@ export function MyPrediction() {
           const data = docSnap.data();
           setUserPrediction(data);
 
-          // Agrupar predicciones por grupo
           const grouped: { [group: string]: Match[] } = {};
           const predictions = data.groupPredictions || {};
 
@@ -139,11 +64,9 @@ export function MyPrediction() {
 
           setPredictionsByGroup(grouped);
 
-          // Calcular puntuación por fase
           const actualMatches = Object.values(matchesMap);
           const groupScore = calculateScore(predictions, actualMatches);
           
-          // Calcular bonus de equipos (si hay datos de equipos que pasaron)
           const teamsBonus = data.phases?.groups?.teamsAdvancing 
             ? calculateTeamsBonus(data.phases.groups.teamsAdvancing, data.actualTeamsAdvanced || [])
             : { teamsCorrect: 0, bonusPoints: 0 };
@@ -176,8 +99,8 @@ export function MyPrediction() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="animate-spin size-12 text-[#1E3A5F]" />
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="size-6 animate-spin text-[#999]" />
       </div>
     );
   }
@@ -189,7 +112,7 @@ export function MyPrediction() {
   const totalPoints = groupScore?.totalPoints || 0;
 
   const getGroupStats = (groupId: string) => {
-    let exact = 0, correct = 0, incorrect = 0;
+    let exact = 0, correct = 0, wrong = 0, pending = 0;
     predictionsByGroup[groupId]?.forEach((p) => {
       const actual = actualMatchesMap[p.id];
       if (hasOfficialResult(actual)) {
@@ -198,181 +121,219 @@ export function MyPrediction() {
           const predResult = p.score1! > p.score2! ? 1 : p.score1! < p.score2! ? -1 : 0;
           const actualResult = actual.score1! > actual.score2! ? 1 : actual.score1! < actual.score2! ? -1 : 0;
           if (predResult === actualResult) correct++;
-          else incorrect++;
+          else wrong++;
         }
+      } else {
+        pending++;
       }
     });
-    return { exact, correct, incorrect, points: exact * 5 + correct * 3 };
+    return { exact, correct, wrong, pending, points: exact * 3 + correct * 1 };
   };
 
-  const currentGroupStats = getGroupStats(selectedGroup);
-  const currentPredictions = predictionsByGroup[selectedGroup] || [];
-
   return (
-    <div className="max-w-6xl mx-auto pb-10">
+    <div className="max-w-3xl mx-auto">
       {/* Header */}
-      <div className="mb-6 flex items-center gap-4">
-        <div className="w-14 h-14 bg-gradient-to-br from-[#D4A824] to-[#B8941E] rounded-2xl flex items-center justify-center shadow-lg">
-          <ClipboardList className="size-7 text-white" />
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-[#1a1a1a] mb-1">Mi Predicción</h1>
+        <p className="text-[#666]">
+          Fase de grupos · {Object.keys(predictionsByGroup).length} grupos completados
+        </p>
+      </div>
+
+      {/* Stats principales */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        <div className="bg-white border border-[#eee] rounded-xl p-4">
+          <p className="text-sm text-[#999] mb-1">Total</p>
+          <p className="text-3xl font-bold text-[#E85D24]">{totalPoints}</p>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Mi Predicción</h1>
-          <p className="text-slate-500 text-sm">Puntos por fase y total</p>
+        <div className="bg-white border border-[#eee] rounded-xl p-4">
+          <p className="text-sm text-[#999] mb-1">Exactos</p>
+          <p className="text-3xl font-bold text-green-600">{groupScore?.exactMatches || 0}</p>
+        </div>
+        <div className="bg-white border border-[#eee] rounded-xl p-4">
+          <p className="text-sm text-[#999] mb-1">Ganador</p>
+          <p className="text-3xl font-bold text-blue-600">{groupScore?.correctWinners || 0}</p>
+        </div>
+        <div className="bg-white border border-[#eee] rounded-xl p-4">
+          <p className="text-sm text-[#999] mb-1">Bonus</p>
+          <p className="text-3xl font-bold text-[#1a1a1a]">+{groupScore?.bonusPoints || 0}</p>
         </div>
       </div>
 
-      {/* Resumen de puntos por fase */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {/* Total */}
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white rounded-2xl">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-sm">Total</p>
-                <p className="text-4xl font-bold">{totalPoints}</p>
-                <p className="text-white/50 text-xs mt-1">puntos</p>
-              </div>
-              <Trophy className="size-10 text-[#D4A824]" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Fase Grupos */}
-        <Card className="border-0 shadow-md bg-white rounded-2xl">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm">Grupos</p>
-                <p className="text-3xl font-bold text-[#1E3A5F]">{groupScore?.matchPoints || 0}</p>
-                <p className="text-slate-400 text-xs mt-1">
-                  +{groupScore?.bonusPoints || 0} bonus
-                </p>
-              </div>
-              <Users className="size-8 text-[#1E3A5F]/30" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Stats Exactos */}
-        <Card className="border-0 shadow-md bg-white rounded-2xl">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm">Exactos</p>
-                <p className="text-3xl font-bold text-emerald-600">{groupScore?.exactMatches || 0}</p>
-                <p className="text-slate-400 text-xs mt-1">×5 pts c/u</p>
-              </div>
-              <CheckCircle2 className="size-8 text-emerald-200" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Stats Ganadores */}
-        <Card className="border-0 shadow-md bg-white rounded-2xl">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-slate-500 text-sm">Ganador</p>
-                <p className="text-3xl font-bold text-[#1E3A5F]">{groupScore?.correctWinners || 0}</p>
-                <p className="text-slate-400 text-xs mt-1">×3 pts c/u</p>
-              </div>
-              <Award className="size-8 text-[#1E3A5F]/20" />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Leyenda */}
+      <div className="flex flex-wrap gap-4 mb-6 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-green-500" />
+          <span className="text-[#666]">Exacto (+3)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-blue-500" />
+          <span className="text-[#666]">Ganador (+1)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-red-400" />
+          <span className="text-[#666]">Fallido (0)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-[#e5e5e5]" />
+          <span className="text-[#666]">Pendiente</span>
+        </div>
       </div>
 
-      {/* Desglose por fases (futuras fases aparecerán aquí) */}
-      <Card className="border-0 shadow-md rounded-2xl mb-6">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-slate-700">Puntos por Fase</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y divide-slate-100">
-            {PHASES.map(phase => {
-              const score = phaseScores[phase.id];
-              const isActive = phase.id === 'groups'; // Por ahora solo grupos activo
-              return (
-                <div key={phase.id} className={`flex items-center justify-between px-5 py-3 ${!isActive ? 'opacity-40' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isActive ? 'bg-[#1E3A5F]' : 'bg-slate-200'}`}>
-                      <span className={`text-sm font-bold ${isActive ? 'text-white' : 'text-slate-500'}`}>
-                        {phase.shortName.charAt(0)}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="font-medium text-slate-900">{phase.name}</p>
-                      <p className="text-xs text-slate-500">{phase.matchCount} partidos</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-lg text-[#1E3A5F]">{score?.totalPoints || 0}</p>
-                    {score && score.bonusPoints > 0 && (
-                      <p className="text-xs text-[#D4A824]">+{score.bonusPoints} bonus</p>
-                    )}
+      {/* Grupos */}
+      <div className="space-y-2">
+        {groups.map((groupId) => {
+          const stats = getGroupStats(groupId);
+          const isExpanded = expandedGroup === groupId;
+          const predictions = predictionsByGroup[groupId] || [];
+
+          return (
+            <div
+              key={groupId}
+              className="bg-white border border-[#eee] rounded-xl overflow-hidden"
+            >
+              {/* Header del grupo */}
+              <button
+                onClick={() => setExpandedGroup(isExpanded ? null : groupId)}
+                className="w-full px-5 py-4 flex items-center justify-between hover:bg-[#fafafa] transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="w-10 h-10 rounded-full bg-[#1a1a1a] text-white font-bold flex items-center justify-center">
+                    {groupId}
+                  </span>
+                  <div className="text-left">
+                    <p className="font-medium text-[#1a1a1a]">Grupo {groupId}</p>
+                    <p className="text-sm text-[#999]">{predictions.length} partidos</p>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Selector de grupos + Partidos */}
-      <div className="mb-6">
-        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Fase de Grupos</h2>
-        <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
-          {groups.map(g => {
-            const stats = getGroupStats(g);
-            const isSelected = selectedGroup === g;
-            
-            return (
-              <button key={g} onClick={() => setSelectedGroup(g)}
-                className={`relative aspect-square rounded-xl font-bold text-lg transition-all ${
-                  isSelected ? 'bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white shadow-lg scale-105' 
-                  : 'bg-white text-slate-700 border-2 border-slate-200 hover:border-[#1E3A5F]'
-                }`}
-              >
-                {g}
-                {/* Indicador de puntos */}
-                {stats.points > 0 && !isSelected && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                    {stats.points}
-                  </span>
-                )}
+                
+                <div className="flex items-center gap-4">
+                  {/* Mini stats */}
+                  <div className="hidden sm:flex items-center gap-2 text-xs">
+                    {stats.exact > 0 && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                        {stats.exact} exactos
+                      </span>
+                    )}
+                    {stats.correct > 0 && (
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
+                        {stats.correct} ganador
+                      </span>
+                    )}
+                  </div>
+                  
+                  <span className="font-bold text-[#E85D24]">{stats.points} pts</span>
+                  
+                  {isExpanded ? (
+                    <ChevronUp className="size-5 text-[#999]" />
+                  ) : (
+                    <ChevronDown className="size-5 text-[#999]" />
+                  )}
+                </div>
               </button>
-            );
-          })}
-        </div>
+
+              {/* Partidos */}
+              {isExpanded && (
+                <div className="border-t border-[#eee] px-5 py-4 space-y-2">
+                  {predictions.map((predicted) => {
+                    const actual = actualMatchesMap[predicted.id];
+                    const hasResult = hasOfficialResult(actual);
+                    
+                    let status: 'pending' | 'exact' | 'correct' | 'wrong' = 'pending';
+                    let points = 0;
+                    
+                    if (hasResult) {
+                      if (predicted.score1 === actual.score1 && predicted.score2 === actual.score2) {
+                        status = 'exact';
+                        points = 3;
+                      } else {
+                        const predWinner = predicted.score1! > predicted.score2! ? 1 : predicted.score1! < predicted.score2! ? -1 : 0;
+                        const realWinner = actual.score1! > actual.score2! ? 1 : actual.score1! < actual.score2! ? -1 : 0;
+                        if (predWinner === realWinner) {
+                          status = 'correct';
+                          points = 1;
+                        } else {
+                          status = 'wrong';
+                        }
+                      }
+                    }
+
+                    return (
+                      <div
+                        key={predicted.id}
+                        className={`flex items-center justify-between py-3 px-4 rounded-lg text-sm ${
+                          !hasResult ? 'bg-[#fafafa]' :
+                          status === 'exact' ? 'bg-green-50 border border-green-200' :
+                          status === 'correct' ? 'bg-blue-50 border border-blue-200' :
+                          'bg-red-50 border border-red-200'
+                        }`}
+                      >
+                        {/* Equipo 1 */}
+                        <div className="flex-1">
+                          <TeamDisplay team={predicted.team1} reverse className="text-[#1a1a1a] text-sm" flagSize="sm" />
+                        </div>
+                        
+                        {/* Marcadores */}
+                        <div className="flex items-center gap-3 mx-4">
+                          {/* Resultado real */}
+                          {hasResult && (
+                            <span className="text-xs text-[#666] font-mono bg-white px-2 py-0.5 rounded border">
+                              {actual.score1}-{actual.score2}
+                            </span>
+                          )}
+                          
+                          {/* Predicción */}
+                          <span className={`font-mono font-semibold px-2.5 py-1 rounded ${
+                            !hasResult ? 'bg-[#e5e5e5] text-[#666]' :
+                            status === 'exact' ? 'bg-green-500 text-white' :
+                            status === 'correct' ? 'bg-blue-500 text-white' :
+                            'bg-red-400 text-white'
+                          }`}>
+                            {predicted.score1} - {predicted.score2}
+                          </span>
+                        </div>
+                        
+                        {/* Equipo 2 */}
+                        <div className="flex-1 text-right">
+                          <TeamDisplay team={predicted.team2} className="text-[#1a1a1a] text-sm justify-end" flagSize="sm" />
+                        </div>
+                        
+                        {/* Puntos */}
+                        <div className="w-12 text-right">
+                          {hasResult ? (
+                            <span className={`text-xs font-bold ${
+                              status === 'exact' ? 'text-green-600' :
+                              status === 'correct' ? 'text-blue-600' :
+                              'text-red-500'
+                            }`}>
+                              +{points}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[#ccc]">—</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Partidos del grupo seleccionado */}
-      <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
-        <CardHeader className="bg-gradient-to-r from-[#1E3A5F] to-[#2D4A6F] text-white py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-xl">{selectedGroup}</span>
-              </div>
-              <div>
-                <CardTitle className="text-lg">Grupo {selectedGroup}</CardTitle>
-                <p className="text-white/70 text-sm">{currentPredictions.length} partidos</p>
-              </div>
+      {/* Fases futuras */}
+      <div className="mt-8 p-5 bg-[#f9f9f9] rounded-xl">
+        <h3 className="text-sm font-medium text-[#1a1a1a] mb-3">Próximas fases</h3>
+        <div className="space-y-2">
+          {PHASES.filter(p => p.id !== 'groups').map((phase) => (
+            <div key={phase.id} className="flex items-center justify-between py-2 text-sm text-[#999]">
+              <span>{phase.name}</span>
+              <span className="text-xs bg-[#eee] px-2 py-1 rounded">Próximamente</span>
             </div>
-            <div className="flex items-center gap-2">
-              {currentGroupStats.exact > 0 && (
-                <div className="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-sm font-bold">{currentGroupStats.exact} exactos</div>
-              )}
-              <div className="bg-[#D4A824] text-white px-3 py-1.5 rounded-lg text-sm font-bold">{currentGroupStats.points} pts</div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 space-y-2">
-          {currentPredictions.map((predicted) => (
-            <MatchComparison key={predicted.id} predicted={predicted} actual={actualMatchesMap[predicted.id]} />
           ))}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

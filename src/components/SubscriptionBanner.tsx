@@ -4,7 +4,7 @@ import { formatCurrency, PAYMENT_CONFIG } from '../config/payments';
 
 export default function SubscriptionBanner() {
   const navigate = useNavigate();
-  const { isSubscribed, subscription, loading } = useSubscription();
+  const { isSubscribed, loading } = useSubscription();
 
   if (loading || isSubscribed) {
     return null;
@@ -15,31 +15,31 @@ export default function SubscriptionBanner() {
   );
 
   return (
-    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
-      <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+    <div className="bg-[#1a1a1a] text-white">
+      <div className="max-w-5xl mx-auto py-3 px-4 sm:px-6">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex-1 text-center sm:text-left">
             <p className="text-sm font-medium">
-              El Mundial 2026 comienza en {daysUntilWorldCup} días
+              ⚽ El Mundial 2026 comienza en {daysUntilWorldCup} días
             </p>
-            <p className="text-xs opacity-90 mt-1">
-              Inscríbete ahora y accede a todas las funciones de predicción
+            <p className="text-xs text-white/70 mt-0.5">
+              Inscríbete y accede a todas las predicciones
             </p>
           </div>
           
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
-              <p className="text-2xl font-bold">
+              <p className="text-xl font-bold text-[#E85D24]">
                 {formatCurrency(PAYMENT_CONFIG.SUBSCRIPTION_PRICE)}
               </p>
-              <p className="text-xs opacity-90">Inscripción única</p>
+              <p className="text-xs text-white/70">Pago único</p>
             </div>
             
             <button
               onClick={() => navigate('/checkout')}
-              className="bg-white text-indigo-600 px-6 py-2.5 rounded-lg font-semibold hover:bg-gray-100 transition-colors duration-200 shadow-lg hover:shadow-xl whitespace-nowrap"
+              className="bg-white text-[#1a1a1a] px-5 py-2 rounded-lg font-medium text-sm hover:bg-[#f5f5f5] transition-colors"
             >
-              Inscribirme ahora
+              Inscribirme
             </button>
           </div>
         </div>

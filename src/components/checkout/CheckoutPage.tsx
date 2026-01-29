@@ -3,6 +3,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { PAYMENT_CONFIG, formatCurrency } from '../../config/payments';
+import { Check, Copy, Loader2 } from 'lucide-react';
 
 export default function CheckoutPage() {
   const { user } = useAuth();
@@ -11,8 +12,28 @@ export default function CheckoutPage() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const amount = PAYMENT_CONFIG.SUBSCRIPTION_PRICE;
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const getPaymentDetails = () => {
+    switch (selectedMethod) {
+      case 'nequi':
+        return { number: PAYMENT_CONFIG.NEQUI.NUMBER, holder: PAYMENT_CONFIG.NEQUI.HOLDER };
+      case 'daviplata':
+        return { number: PAYMENT_CONFIG.DAVIPLATA.NUMBER, holder: PAYMENT_CONFIG.DAVIPLATA.HOLDER };
+      case 'bancolombia':
+        return { number: PAYMENT_CONFIG.BANCOLOMBIA.NUMBER, holder: PAYMENT_CONFIG.BANCOLOMBIA.HOLDER };
+      default:
+        return null;
+    }
+  };
 
   const handleSubmitPayment = async () => {
     if (!user || !selectedMethod || !referenceNumber.trim()) {
@@ -37,201 +58,174 @@ export default function CheckoutPage() {
 
       setSent(true);
     } catch (err) {
-      setError('Error al enviar la solicitud. Intenta de nuevo.');
+      setError('Error al enviar. Intenta de nuevo.');
       console.error('Payment request error:', err);
     } finally {
       setSending(false);
     }
   };
 
+  // Pantalla de éxito
   if (sent) {
     return (
-      <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
-              <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              Solicitud enviada
-            </h2>
-            <p className="text-gray-600 mb-4">
-              Hemos recibido tu comprobante de pago. Verificaremos el pago y activaremos tu cuenta en las proximas horas.
-            </p>
-            <p className="text-sm text-gray-500">
-              Recibiras una notificacion cuando tu cuenta este activa.
-            </p>
+      <div className="max-w-md mx-auto py-16 px-4">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Check className="size-8 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-[#1a1a1a] mb-3">
+            Solicitud enviada
+          </h1>
+          <p className="text-[#666] mb-8">
+            Verificaremos tu pago y activaremos tu cuenta en las próximas horas. 
+            Te notificaremos cuando esté listo.
+          </p>
+          <div className="p-4 bg-[#f5f5f5] rounded-xl text-sm text-[#666]">
+            <p><strong>Referencia:</strong> {referenceNumber}</p>
+            <p><strong>Método:</strong> {selectedMethod}</p>
+            <p><strong>Monto:</strong> {formatCurrency(amount)}</p>
           </div>
         </div>
       </div>
     );
   }
 
+  const paymentDetails = getPaymentDetails();
+
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Completa tu inscripción
-          </h1>
-          <p className="text-gray-600">
-            Realiza el pago y accede a todas las funciones del Mundial 2026
+    <div className="max-w-lg mx-auto py-8 px-4">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-[#1a1a1a] mb-2">
+          Completa tu inscripción
+        </h1>
+        <p className="text-[#666]">
+          Paga {formatCurrency(amount)} para acceder al Mundial 2026
+        </p>
+      </div>
+
+      {/* Métodos de pago */}
+      <div className="mb-6">
+        <p className="text-sm font-medium text-[#1a1a1a] mb-3">
+          Selecciona cómo pagar
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          {([
+            { id: 'nequi', name: 'Nequi', color: '#E6007A' },
+            { id: 'daviplata', name: 'Daviplata', color: '#ED1C24' },
+            { id: 'bancolombia', name: 'Bancolombia', color: '#FDDA24' },
+          ]).map((method) => (
+            <button
+              key={method.id}
+              onClick={() => setSelectedMethod(method.id as any)}
+              className={`p-4 rounded-xl border-2 transition-all text-center ${
+                selectedMethod === method.id
+                  ? 'border-[#1a1a1a] bg-[#1a1a1a] text-white'
+                  : 'border-[#eee] bg-white hover:border-[#ccc]'
+              }`}
+            >
+              <div
+                className={`w-3 h-3 rounded-full mx-auto mb-2 ${
+                  selectedMethod === method.id ? 'bg-white' : ''
+                }`}
+                style={{ backgroundColor: selectedMethod === method.id ? 'white' : method.color }}
+              />
+              <span className="text-sm font-medium">{method.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Datos de pago */}
+      {paymentDetails && (
+        <div className="mb-6 p-5 bg-[#f9f9f9] rounded-xl border border-[#eee]">
+          <p className="text-sm text-[#666] mb-3">
+            Envía <strong className="text-[#1a1a1a]">{formatCurrency(amount)}</strong> a:
+          </p>
+          
+          <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-[#eee] mb-2">
+            <span className="font-mono text-lg font-semibold text-[#1a1a1a]">
+              {paymentDetails.number}
+            </span>
+            <button
+              onClick={() => copyToClipboard(paymentDetails.number)}
+              className="p-2 hover:bg-[#f5f5f5] rounded-lg transition-colors"
+            >
+              {copied ? (
+                <Check className="size-4 text-green-600" />
+              ) : (
+                <Copy className="size-4 text-[#999]" />
+              )}
+            </button>
+          </div>
+          
+          <p className="text-sm text-[#666]">
+            A nombre de: <strong>{paymentDetails.holder}</strong>
           </p>
         </div>
+      )}
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex justify-between items-center">
-              <span className="text-lg font-semibold text-gray-900">Total a pagar</span>
-              <span className="text-2xl font-bold text-indigo-600">
-                {formatCurrency(amount)}
-              </span>
-            </div>
-          </div>
-
-          <div className="p-6 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              1. Selecciona tu metodo de pago
-            </h3>
-            
-            <div className="grid gap-3">
-              <button
-                onClick={() => setSelectedMethod('nequi')}
-                className={`flex items-center p-4 border-2 rounded-lg transition-all ${
-                  selectedMethod === 'nequi'
-                    ? 'border-indigo-600 bg-indigo-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mr-4">
-                  <span className="text-pink-600 font-bold text-lg">N</span>
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-gray-900">Nequi</p>
-                  <p className="text-sm text-gray-600">Transferencia instantanea</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedMethod('daviplata')}
-                className={`flex items-center p-4 border-2 rounded-lg transition-all ${
-                  selectedMethod === 'daviplata'
-                    ? 'border-indigo-600 bg-indigo-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mr-4">
-                  <span className="text-red-600 font-bold text-lg">D</span>
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-gray-900">Daviplata</p>
-                  <p className="text-sm text-gray-600">Transferencia instantanea</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedMethod('bancolombia')}
-                className={`flex items-center p-4 border-2 rounded-lg transition-all ${
-                  selectedMethod === 'bancolombia'
-                    ? 'border-indigo-600 bg-indigo-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
-                  <span className="text-yellow-600 font-bold text-lg">B</span>
-                </div>
-                <div className="text-left">
-                  <p className="font-medium text-gray-900">Bancolombia</p>
-                  <p className="text-sm text-gray-600">Transferencia bancaria</p>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {selectedMethod && (
-            <div className="p-6 border-b border-gray-200 bg-gray-50">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                2. Realiza el pago
-              </h3>
-              
-              <div className="bg-white rounded-lg p-4 border border-gray-200">
-                {selectedMethod === 'nequi' && (
-                  <>
-                    <p className="text-sm text-gray-600 mb-2">Envia {formatCurrency(amount)} a:</p>
-                    <p className="text-xl font-bold text-gray-900 mb-1">{PAYMENT_CONFIG.NEQUI.NUMBER}</p>
-                    <p className="text-sm text-gray-600">A nombre de: {PAYMENT_CONFIG.NEQUI.HOLDER}</p>
-                  </>
-                )}
-                {selectedMethod === 'daviplata' && (
-                  <>
-                    <p className="text-sm text-gray-600 mb-2">Envia {formatCurrency(amount)} a:</p>
-                    <p className="text-xl font-bold text-gray-900 mb-1">{PAYMENT_CONFIG.DAVIPLATA.NUMBER}</p>
-                    <p className="text-sm text-gray-600">A nombre de: {PAYMENT_CONFIG.DAVIPLATA.HOLDER}</p>
-                  </>
-                )}
-                {selectedMethod === 'bancolombia' && (
-                  <>
-                    <p className="text-sm text-gray-600 mb-2">Transfiere {formatCurrency(amount)} a:</p>
-                    <p className="text-xl font-bold text-gray-900 mb-1">{PAYMENT_CONFIG.BANCOLOMBIA.NUMBER}</p>
-                    <p className="text-sm text-gray-600">A nombre de: {PAYMENT_CONFIG.BANCOLOMBIA.HOLDER}</p>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {selectedMethod && (
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                3. Confirma tu pago
-              </h3>
-              
-              <div className="mb-4">
-                <label htmlFor="reference" className="block text-sm font-medium text-gray-700 mb-2">
-                  Numero de referencia o comprobante
-                </label>
-                <input
-                  type="text"
-                  id="reference"
-                  value={referenceNumber}
-                  onChange={(e) => setReferenceNumber(e.target.value)}
-                  placeholder="Ej: 123456789"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  Ingresa el numero de referencia que aparece en tu comprobante de pago
-                </p>
-              </div>
-
-              {error && (
-                <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-4">
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-
-              <button
-                onClick={handleSubmitPayment}
-                disabled={sending || !referenceNumber.trim()}
-                className="w-full bg-indigo-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors duration-200 flex items-center justify-center"
-              >
-                {sending ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Enviando...
-                  </>
-                ) : (
-                  'Confirmar pago'
-                )}
-              </button>
-
-              <p className="mt-4 text-center text-xs text-gray-500">
-                Tu cuenta sera activada una vez verifiquemos el pago. Esto puede tomar hasta 24 horas.
-              </p>
-            </div>
-          )}
+      {/* Número de referencia */}
+      {selectedMethod && (
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-[#1a1a1a] mb-2">
+            Número de referencia del pago
+          </label>
+          <input
+            type="text"
+            value={referenceNumber}
+            onChange={(e) => setReferenceNumber(e.target.value)}
+            placeholder="Ej: 123456789"
+            className="w-full px-4 py-3 bg-white border border-[#e0e0e0] rounded-xl text-[#1a1a1a] placeholder:text-[#999] focus:outline-none focus:border-[#1a1a1a] transition-colors"
+          />
+          <p className="mt-2 text-xs text-[#999]">
+            Lo encuentras en el comprobante de tu transferencia
+          </p>
         </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-400 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Botón enviar */}
+      {selectedMethod && (
+        <button
+          onClick={handleSubmitPayment}
+          disabled={sending || !referenceNumber.trim()}
+          className="w-full py-4 bg-[#1a1a1a] text-white font-medium rounded-xl hover:bg-[#333] disabled:bg-[#ccc] disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {sending ? (
+            <>
+              <Loader2 className="size-5 animate-spin" />
+              Enviando...
+            </>
+          ) : (
+            'Confirmar pago'
+          )}
+        </button>
+      )}
+
+      {/* Info adicional */}
+      <div className="mt-8 pt-6 border-t border-[#eee]">
+        <h3 className="text-sm font-medium text-[#1a1a1a] mb-3">¿Cómo funciona?</h3>
+        <ol className="space-y-2 text-sm text-[#666]">
+          <li className="flex gap-3">
+            <span className="w-5 h-5 rounded-full bg-[#f5f5f5] text-[#999] text-xs flex items-center justify-center flex-shrink-0">1</span>
+            <span>Realiza la transferencia al número indicado</span>
+          </li>
+          <li className="flex gap-3">
+            <span className="w-5 h-5 rounded-full bg-[#f5f5f5] text-[#999] text-xs flex items-center justify-center flex-shrink-0">2</span>
+            <span>Ingresa el número de referencia del comprobante</span>
+          </li>
+          <li className="flex gap-3">
+            <span className="w-5 h-5 rounded-full bg-[#f5f5f5] text-[#999] text-xs flex items-center justify-center flex-shrink-0">3</span>
+            <span>Verificamos el pago y activamos tu cuenta (máx. 24h)</span>
+          </li>
+        </ol>
       </div>
     </div>
   );

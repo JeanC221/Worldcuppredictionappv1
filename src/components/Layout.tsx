@@ -1,17 +1,16 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Trophy, ClipboardList, BarChart3, Users, Home, BookOpen, Menu, Shield, User } from 'lucide-react';
+import { Menu, X, ChevronDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { Button } from './ui/button';
 import { useAdmin } from '../hooks/useAdmin';
 import { useHasPrediction } from '../hooks/useHasPrediction';
 import { auth } from '../lib/firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { NotificationBell } from './NotificationBell';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const { isAdmin } = useAdmin();
   const { hasPrediction } = useHasPrediction();
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -23,213 +22,198 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const getInitial = () => {
-    if (user?.displayName) return user.displayName.charAt(0).toUpperCase();
-    if (user?.email) return user.email.charAt(0).toUpperCase();
-    return '?';
+  // Cerrar menús al cambiar de ruta
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setIsProfileOpen(false);
+  }, [location.pathname]);
+
+  const handleSignOut = async () => {
+    await signOut(auth);
   };
 
-  // Items base de navegación
-  const allNavItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: Home, requiresPrediction: false },
-    { path: '/prediccion', label: 'Predicción', icon: ClipboardList, requiresPrediction: false },
-    { path: '/mi-polla', label: 'Mi Polla', icon: Trophy, requiresPrediction: false },
-    { path: '/ranking', label: 'Ranking', icon: BarChart3, requiresPrediction: true },
-    { path: '/comunidad', label: 'Comunidad', icon: Users, requiresPrediction: true },
-    { path: '/instrucciones', label: 'Instrucciones', icon: BookOpen, requiresPrediction: false },
-  ];
+  const navItems = [
+    { path: '/dashboard', label: 'Inicio' },
+    { path: '/prediccion', label: 'Predicción' },
+    { path: '/mi-polla', label: 'Mi Polla' },
+    { path: '/ranking', label: 'Ranking', requiresPrediction: true },
+    { path: '/comunidad', label: 'Comunidad', requiresPrediction: true },
+    { path: '/instrucciones', label: 'Reglas' },
+  ].filter(item => !item.requiresPrediction || hasPrediction || isAdmin);
 
-  // Filtrar items según si tiene predicción O es admin
-  const navItems = allNavItems.filter(item => 
-    !item.requiresPrediction || hasPrediction || isAdmin
-  );
+  const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-[#FAFAF8] flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-20">
+      <header className="bg-white border-b border-[#eee] sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link to="/dashboard" className="flex items-center gap-3 flex-shrink-0">
-              <div className="w-12 h-12 flex items-center justify-center">
-                <img 
-                  src="/logo.png" 
-                  alt="Polla Mundialista" 
-                  className="max-h-12 max-w-12 object-contain"
-                  onError={(e) => {
-                    // Fallback si no hay logo
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              </div>
-              <div className="hidden md:block">
-                <h1 className="text-lg font-bold text-[#1E3A5F] leading-tight">Polla Mundialista</h1>
-                <p className="text-xs text-slate-500 font-medium">FIFA World Cup 2026</p>
-              </div>
+            <Link to="/dashboard" className="flex items-center gap-3">
+              <img
+                src="/logo.png"
+                alt="Logo"
+                className="h-9 w-auto"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <span className="hidden sm:block font-semibold text-[#1a1a1a]">
+                Polla Mundial
+              </span>
             </Link>
 
-            {/* Navegación Desktop - Centrada */}
-            <nav className="hidden lg:flex items-center flex-1 justify-center px-8">
-              <div className="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all ${
-                        isActive
-                          ? 'bg-[#1E3A5F] text-white shadow-md'
-                          : 'text-slate-600 hover:text-[#1E3A5F] hover:bg-white'
-                      }`}
-                    >
-                      <Icon className="size-4" />
-                      <span className="text-sm">{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </nav>
-
-            {/* Acciones de usuario */}
-            <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
+            {/* Nav Desktop */}
+            <nav className="hidden lg:flex items-center gap-1">
+              {navItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isActive(item.path)
+                      ? 'bg-[#1a1a1a] text-white'
+                      : 'text-[#666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+              
               {isAdmin && (
                 <Link
                   to="/admin"
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all ${
-                    location.pathname === '/admin'
-                      ? 'bg-[#E85D24] text-white shadow-md'
-                      : 'text-[#E85D24] border-2 border-[#E85D24] hover:bg-[#E85D24] hover:text-white'
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    isActive('/admin')
+                      ? 'bg-[#E85D24] text-white'
+                      : 'text-[#E85D24] hover:bg-[#E85D24]/10'
                   }`}
                 >
-                  <Shield className="size-4" />
-                  <span className="text-sm">Admin</span>
+                  Admin
                 </Link>
               )}
+            </nav>
 
-              {/* Separador */}
-              <div className="w-px h-8 bg-slate-200" />
-
-              {/* Campana de notificaciones */}
+            {/* Right side */}
+            <div className="flex items-center gap-2">
               <NotificationBell />
+              
+              {/* Profile dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsProfileOpen(!isProfileOpen)}
+                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-[#f5f5f5] transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-full bg-[#1a1a1a] flex items-center justify-center text-white text-sm font-medium overflow-hidden">
+                    {user?.photoURL ? (
+                      <img src={user.photoURL} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      user?.displayName?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase() || '?'
+                    )}
+                  </div>
+                  <ChevronDown className={`hidden sm:block size-4 text-[#666] transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-              {/* Avatar del usuario */}
-              <Link
-                to="/perfil"
-                className={`p-1 rounded-full transition-all hover:ring-2 hover:ring-[#1E3A5F]/30 ${
-                  location.pathname === '/perfil' ? 'ring-2 ring-[#1E3A5F]' : ''
-                }`}
-                title="Mi Perfil"
-              >
-                <Avatar className="size-10 border-2 border-slate-200 hover:border-[#1E3A5F] transition-colors">
-                  <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'Usuario'} />
-                  <AvatarFallback className="bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white text-sm font-bold">
-                    {getInitial()}
-                  </AvatarFallback>
-                </Avatar>
-              </Link>
-            </div>
+                {isProfileOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setIsProfileOpen(false)} 
+                    />
+                    <div className="absolute right-0 mt-2 w-56 bg-white border border-[#eee] rounded-lg shadow-lg z-50 py-1">
+                      <div className="px-4 py-3 border-b border-[#eee]">
+                        <p className="text-sm font-medium text-[#1a1a1a] truncate">
+                          {user?.displayName || 'Usuario'}
+                        </p>
+                        <p className="text-xs text-[#999] truncate">
+                          {user?.email}
+                        </p>
+                      </div>
+                      <Link
+                        to="/perfil"
+                        className="block px-4 py-2.5 text-sm text-[#666] hover:bg-[#f5f5f5] hover:text-[#1a1a1a]"
+                      >
+                        Mi perfil
+                      </Link>
+                      <button
+                        onClick={handleSignOut}
+                        className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        Cerrar sesión
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
 
-            {/* Mobile */}
-            <div className="flex items-center gap-2 lg:hidden">
-              <NotificationBell />
-              <Link to="/perfil" className="p-1">
-                <Avatar className="size-9 border-2 border-slate-200">
-                  <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || 'Usuario'} />
-                  <AvatarFallback className="bg-gradient-to-br from-[#1E3A5F] to-[#2D4A6F] text-white text-xs font-bold">
-                    {getInitial()}
-                  </AvatarFallback>
-                </Avatar>
-              </Link>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-slate-300"
+              {/* Mobile menu button */}
+              <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="lg:hidden p-2 rounded-lg hover:bg-[#f5f5f5] transition-colors"
               >
-                <Menu className="size-5" />
-              </Button>
+                {isMobileMenuOpen ? (
+                  <X className="size-5 text-[#1a1a1a]" />
+                ) : (
+                  <Menu className="size-5 text-[#1a1a1a]" />
+                )}
+              </button>
             </div>
           </div>
+        </div>
 
-          {/* Menú móvil */}
-          {isMobileMenuOpen && (
-            <div className="lg:hidden py-4 border-t border-slate-200">
-              <nav className="flex flex-col gap-1">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = location.pathname === item.path;
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-                        isActive
-                          ? 'bg-[#1E3A5F] text-white'
-                          : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      <Icon className="size-5" />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
-                
-                {isAdmin && (
-                  <Link
-                    to="/admin"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-                      location.pathname === '/admin'
-                        ? 'bg-[#E85D24] text-white'
-                        : 'text-[#E85D24] hover:bg-orange-50'
-                    }`}
-                  >
-                    <Shield className="size-5" />
-                    <span>Panel Admin</span>
-                  </Link>
-                )}
-
+        {/* Mobile menu */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden border-t border-[#eee] bg-white">
+            <nav className="max-w-6xl mx-auto px-4 py-3 space-y-1">
+              {navItems.map((item) => (
                 <Link
-                  to="/perfil"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-                    location.pathname === '/perfil'
-                      ? 'bg-[#1E3A5F] text-white'
-                      : 'text-slate-600 hover:bg-slate-100'
+                  key={item.path}
+                  to={item.path}
+                  className={`block px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                    isActive(item.path)
+                      ? 'bg-[#1a1a1a] text-white'
+                      : 'text-[#666] hover:bg-[#f5f5f5]'
                   }`}
                 >
-                  <User className="size-5" />
-                  <span>Mi Perfil</span>
+                  {item.label}
                 </Link>
-              </nav>
-            </div>
-          )}
-        </div>
+              ))}
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  className={`block px-4 py-3 text-sm font-medium rounded-lg transition-colors ${
+                    isActive('/admin')
+                      ? 'bg-[#E85D24] text-white'
+                      : 'text-[#E85D24] hover:bg-[#E85D24]/10'
+                  }`}
+                >
+                  Panel Admin
+                </Link>
+              )}
+            </nav>
+          </div>
+        )}
       </header>
 
-      {/* Main content - flex-1 para empujar el footer */}
-      <main className="container mx-auto px-4 py-8 flex-1">{children}</main>
+      {/* Main content */}
+      <main className="flex-1">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+          {children}
+        </div>
+      </main>
 
-      {/* Footer */}
-      <footer className="bg-[#1E3A5F] text-white">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
-                <Trophy className="size-5 text-[#D4A824]" />
-              </div>
-              <div>
-                <div className="text-sm font-semibold">Polla Mundialista 2026</div>
-                <div className="text-xs text-slate-300">Sistema de Predicciones Deportivas</div>
-              </div>
+      {/* Footer - Minimalista */}
+      <footer className="border-t border-[#eee] bg-white">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-[#999]">
+            <div className="flex items-center gap-2">
+              <img
+                src="/logo.png"
+                alt="Logo"
+                className="h-6 w-auto opacity-50"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+              <span>Polla Mundialista 2026</span>
             </div>
-            <div className="text-sm text-slate-300">
-              © 2026 Todos los derechos reservados
-            </div>
+            <span>© 2026 Todos los derechos reservados</span>
           </div>
         </div>
       </footer>
